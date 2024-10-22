@@ -1,0 +1,14 @@
+[package]
+name = "aera-vision-module"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.13.3"
+opencv = "0.93.3"
+vision = { path = "../vision" }
+anyhow = "1.0.90"
+nalgebra = "0.33.1"
+
+[build-dependencies]
+prost-build = "0.13.3"
