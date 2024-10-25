@@ -1,0 +1,12 @@
+[package]
+name = "pixy2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.91"
+cxx = "1.0"
+opencv = "0.93.3"
+
+[build-dependencies]
+cxx-build = "1.0"

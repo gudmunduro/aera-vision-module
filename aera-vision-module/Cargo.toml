@@ -7,6 +7,7 @@ edition = "2021"
 prost = "0.13.3"
 opencv = "0.93.3"
 vision = { path = "../vision" }
+pixy2 = { path = "../pixy2" }
 anyhow = "1.0.90"
 nalgebra = "0.33.1"
 
