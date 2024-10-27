@@ -1,5 +1,8 @@
+use serde::Deserialize;
+use serde_big_array::BigArray;
 
 
+#[derive(Debug, Clone, Deserialize)]
 pub struct FeedbackData {
     pub message_size: u16, // Total message size in bytes
     pub reserved1: [i16; 3], // Reserved
@@ -73,6 +76,7 @@ pub struct FeedbackData {
     pub jaw_button_signal: u8, // Jaw control signal on control panel
     pub six_force_online: u8, // Six-axis force online status
 
+    #[serde(with = "BigArray")]
     pub reserved6: [u8; 82], // Reserved
 
     pub m_actual: [f64; 6], // Actual torque

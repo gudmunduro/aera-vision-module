@@ -1,4 +1,7 @@
-use std::{io::Write, net::TcpStream};
+use std::{io::{Read, Write}, net::TcpStream};
+
+use anyhow::Ok;
+use feedback_data::FeedbackData;
 
 pub mod feedback_data;
 
@@ -15,7 +18,7 @@ impl RobotConn {
 
         Ok(RobotConn {
             dashboard_cmd_stream: dasboard_conn,
-            motion_cmd_stream: motion_conn 
+            motion_cmd_stream: motion_conn,
         })
     }
 
@@ -35,5 +38,24 @@ impl RobotConn {
         write!(&mut self.motion_cmd_stream, "MovJ({x}, {y}, {z}, {r})\n")?;
 
         Ok(())
+    }
+}
+
+pub struct RobotFeedbackConn {
+    feedback_conn: TcpStream,
+}
+
+impl RobotFeedbackConn {
+    pub fn connect() -> anyhow::Result<RobotFeedbackConn> {
+        let feedback_conn = TcpStream::connect("192.168.1.6:30004")?;
+        Ok(RobotFeedbackConn { feedback_conn })
+    }
+
+    pub fn receive_feedback(&mut self) -> anyhow::Result<FeedbackData> {
+        let mut buffer = [0u8; 1440];
+        self.feedback_conn.read_exact(&mut buffer)?;
+        let feedback_data = bincode::deserialize(&buffer)?;
+        
+        Ok(feedback_data)
     }
 }
