@@ -1,7 +1,7 @@
 use anyhow::{bail, Ok};
 use nalgebra::{DMatrix, Vector3};
 use opencv::{core::{Mat, MatTraitConst, Size, CV_8UC1, CV_8UC3}, highgui::{imshow, wait_key}, imgproc::{cvt_color_def, resize, COLOR_BGR2GRAY, INTER_LINEAR}};
-
+use opencv::core::CV_8U;
 use crate::utils::{colored_mat_to_dmatrix, mat_to_dmatrix};
 
 
@@ -15,7 +15,8 @@ pub fn preprocess_image(img: &Mat) -> anyhow::Result<(DMatrix<f64>, DMatrix<Vect
             cvt_color_def(img, &mut original_img_gray, COLOR_BGR2GRAY)?;
         },
         _ => {
-            bail!("Image of unknown color type");
+            println!("Expected types: {CV_8UC1}, {CV_8UC3}, {CV_8U}");
+            bail!("Image of unknown color type {}", img.typ());
         }
     }
     

@@ -17,10 +17,10 @@ fn main() -> anyhow::Result<()> {
     let pixy = PixyCamera::init()?;
     let mut robot = RobotConn::connect().expect("Failed to connect to robot");
     let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
-    //robot.enable_robot()?
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
 
     {
+        println!("Getting initial feedback...");
         let feedback_data = feedback_data.clone();
         thread::spawn(move || {
             run_feedback_loop(robot_feedback, feedback_data);
@@ -63,7 +63,11 @@ fn main() -> anyhow::Result<()> {
         match cmd {
             Command::MovJ(x, y, z, r) => {
                 println!("Got movj command from AERA to {x}, {y}, {z}, {r}");
-                log_err(|| robot.mov_j(x, y, z, r));
+                log_err(|| robot.mov_j(x as f64, y as f64, z as f64, r as f64));
+            }
+            Command::EnableRobot => {
+                println!("Got enable_robot command from AERA");
+                log_err(|| robot.enable_robot());
             }
         }
     }

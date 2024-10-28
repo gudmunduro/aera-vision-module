@@ -1,7 +1,9 @@
+use std::alloc::{alloc, Layout};
+use std::ptr;
 use std::ptr::null_mut;
 
 use anyhow::{bail, Ok};
-use opencv::core::{Mat, Scalar};
+use opencv::core::{Mat, Scalar, Scalar_, VecN};
 
 const PIXY2_RAW_FRAME_WIDTH: usize = 316;
 const PIXY2_RAW_FRAME_HEIGHT: usize = 208;
@@ -24,12 +26,11 @@ pub struct PixyCamera {}
 
 impl PixyCamera {
     pub fn init() -> anyhow::Result<Self> {
-        let res = ffi::init();
         if ffi::init() != 0 {
-            bail!("Failed to initialize pixy camera with result {res}");
+            bail!("Failed to initialize pixy camera");
         }
         if ffi::stop() != 0 {
-            bail!("Failed to stop pixy camera program with result {res}");
+            bail!("Failed to stop pixy camera program");
         }
         Ok(PixyCamera {})
     }
@@ -40,13 +41,15 @@ impl PixyCamera {
             ffi::get_raw_frame(&mut bayer_frame);
         }
         let bayer_frame = unsafe {
-            Vec::from_raw_parts(bayer_frame, PIXY2_BAYER_FRAME_BUFFER_SIZE, PIXY2_BAYER_FRAME_BUFFER_SIZE)
+            let bayer_frame_copy: *mut u8 = alloc(Layout::new::<[u8; PIXY2_BAYER_FRAME_BUFFER_SIZE]>());
+            ptr::copy_nonoverlapping(bayer_frame, bayer_frame_copy, PIXY2_BAYER_FRAME_BUFFER_SIZE);
+            Vec::from_raw_parts(bayer_frame_copy, PIXY2_BAYER_FRAME_BUFFER_SIZE, PIXY2_BAYER_FRAME_BUFFER_SIZE)
         };
         let rgb_frame = demosic(PIXY2_RAW_FRAME_WIDTH, PIXY2_RAW_FRAME_HEIGHT, bayer_frame.as_slice());
         let image_data = rgb_frame
             .as_slice()
             .iter()
-            .map(|v| Scalar::new(((*v >> 16) & 0xff) as f64 / 255.0, ((*v >> 8) & 0xff) as f64 / 255.0, (*v & 0xFF) as f64 / 255.0, 1.0))
+            .map(|v| VecN::<u8, 3>::from_array([((*v >> 16) & 0xff) as u8, ((*v >> 8) & 0xff) as u8, (*v & 0xFF) as u8]))
             .collect::<Vec<_>>();
         let mat = Mat::new_rows_cols_with_data(PIXY2_RAW_FRAME_HEIGHT as i32, PIXY2_RAW_FRAME_WIDTH as i32, image_data.as_slice())?.clone_pointee();
         Ok(mat)

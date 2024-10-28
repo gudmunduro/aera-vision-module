@@ -24,7 +24,7 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        let comm_ids = CommIds::from_list(&["c", "co1", "co2", "co3", "position", "size", "class", "mov_j"]);
+        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "size", "obj_type", "mov_j", "enable_robot"]);
 
         let mut aera_conn = AeraConn { stream, comm_ids, timestamp: 0 };
         aera_conn.send_setup_command()?;
@@ -55,23 +55,35 @@ impl AeraConn {
                 objects: HashMap::from([
                     ("position".to_string(), self.comm_ids.get("position")),
                     ("size".to_string(), self.comm_ids.get("size")),
-                    ("class".to_string(), self.comm_ids.get("class")),
+                    ("obj_type".to_string(), self.comm_ids.get("obj_type")),
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
+                    ("enable_robot".to_string(), self.comm_ids.get("enable_robot"))
                 ]),
                 command_descriptions: vec![
                     CommandDescription {
                         // Params: [x, y, z, r (as deg)]
                         description: Some(VariableDescription {
-                            entity_id: self.comm_ids.get("mov_j"),
-                            id: self.comm_ids.get("h"),
-                            data_type: variable_description::DataType::Double as i32,
+                            entity_id: self.comm_ids.get("h"),
+                            id: self.comm_ids.get("mov_j"),
+                            data_type: variable_description::DataType::Int64 as i32,
                             dimensions: vec![4],
                             opcode_string_handle: "vec4".to_string(),
                         }),
                         name: "mov_j".to_string(),
-                    }
+                    },
+                    CommandDescription {
+                        // Params: [x, y, z, r (as deg)]
+                        description: Some(VariableDescription {
+                            entity_id: self.comm_ids.get("h"),
+                            id: self.comm_ids.get("enable_robot"),
+                            data_type: variable_description::DataType::CommunicationId as i32,
+                            dimensions: vec![0],
+                            opcode_string_handle: String::new(),
+                        }),
+                        name: "enable_robot".to_string(),
+                    },
                 ],
             })),
             timestamp: 0,
@@ -124,7 +136,7 @@ impl AeraConn {
             ProtoVariable {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
-                    id: self.comm_ids.get("class"),
+                    id: self.comm_ids.get("obj_type"),
                     data_type: variable_description::DataType::Int64 as i32,
                     dimensions: vec![1],
                     opcode_string_handle: "set".to_string(),
@@ -182,11 +194,13 @@ impl AeraConn {
 
         let res_cmd = if meta.id == self.comm_ids.get("mov_j") {
             Command::MovJ(
-                le_bytes_to_f64(&command_var.data[0..8]),
-                le_bytes_to_f64(&command_var.data[8..16]),
-                le_bytes_to_f64(&command_var.data[16..24]),
-                le_bytes_to_f64(&command_var.data[24..32]),
+                le_bytes_to_i64(&command_var.data[0..8]),
+                le_bytes_to_i64(&command_var.data[8..16]),
+                le_bytes_to_i64(&command_var.data[16..24]),
+                le_bytes_to_i64(&command_var.data[24..32]),
             )
+        } else if meta.id == self.comm_ids.get("enable_robot") {
+            Command::EnableRobot
         } else {
             bail!("Invalid cmd with id {}", meta.id)
         };
@@ -211,7 +225,7 @@ impl CommIds {
             id_map: list
                 .iter()
                 .enumerate()
-                .map(|(id, key)| (key.to_string(), id as i32))
+                .map(|(id, key)| (key.to_string(), id as i32+1))
                 .collect(),
         }
     }
@@ -229,4 +243,9 @@ fn le_bytes_to_f64(slice: &[u8]) -> f64 {
 fn le_bytes_to_u64(slice: &[u8]) -> u64 {
     let bytes: [u8; 8] = slice.try_into().expect("Incorrect slice length");
     u64::from_le_bytes(bytes)
+}
+
+fn le_bytes_to_i64(slice: &[u8]) -> i64 {
+    let bytes: [u8; 8] = slice.try_into().expect("Incorrect slice length");
+    i64::from_le_bytes(bytes)
 }

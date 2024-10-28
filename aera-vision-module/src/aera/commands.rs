@@ -1,4 +1,5 @@
 #[derive(Debug)]
 pub enum Command {
-    MovJ(f64, f64, f64, f64)
+    MovJ(i64, i64, i64, i64),
+    EnableRobot
 }
