@@ -15,7 +15,7 @@ pub fn preprocess_image(img: &Mat) -> anyhow::Result<(DMatrix<f64>, DMatrix<Vect
             cvt_color_def(img, &mut original_img_gray, COLOR_BGR2GRAY)?;
         },
         _ => {
-            println!("Expected types: {CV_8UC1}, {CV_8UC3}, {CV_8U}");
+            log::debug!("Expected types: {CV_8UC1}, {CV_8UC3}, {CV_8U}");
             bail!("Image of unknown color type {}", img.typ());
         }
     }

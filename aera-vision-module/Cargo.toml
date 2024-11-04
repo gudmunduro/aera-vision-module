@@ -13,6 +13,8 @@ nalgebra = "0.33.1"
 bincode = "1.3.3"
 serde = { version = "1.0.213", features = ["derive"] }
 serde-big-array = "0.5.1"
+log = "0.4.22"
+simple-log = "2.1.1"
 
 [build-dependencies]
 prost-build = "0.13.3"

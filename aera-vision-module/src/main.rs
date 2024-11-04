@@ -11,6 +11,7 @@ pub mod aera;
 pub mod robot;
 
 fn main() -> anyhow::Result<()> {
+    setup_logging();
     let mut robot = RobotConn::connect().expect("Failed to connect to robot");
     let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
     let mut aera = AeraConn::connect("127.0.0.1")?;
@@ -18,17 +19,17 @@ fn main() -> anyhow::Result<()> {
     let mut vision = VisionSystem::new();
     let pixy = PixyCamera::init()?;
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
+    let mut properties = Properties::new();
 
     {
-        println!("Getting initial feedback...");
+        log::info!("Getting initial feedback...");
         let feedback_data = feedback_data.clone();
         thread::spawn(move || {
             run_feedback_loop(robot_feedback, feedback_data);
         });
     }
 
-
-    let mut properties = Properties::new();
+    log::info!("Starting main loop");
     loop {
         sleep(Duration::from_secs(3));
         
@@ -52,24 +53,24 @@ fn main() -> anyhow::Result<()> {
         drop(feedback_data);
 
         // Send to AERA
-        println!("Sending position ({}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z);
+        log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
         aera.send_properties(&properties)?;
         
         // Handle command from AERA
         let cmd = match aera.listen_for_command() {
             Ok(cmd) => cmd,
             Err(e) => {
-                eprintln!("Error receiving command from AERA: {e}");
+                log::error!("Error receiving command from AERA: {e}");
                 continue;
             }
         };
         match cmd {
             Command::MovJ(x, y, z, r) => {
-                println!("Got movj command from AERA to {x}, {y}, {z}, {r}");
+                log::debug!("Got movj command from AERA to {x}, {y}, {z}, {r}");
                 log_err(|| robot.mov_j(x as f64, y as f64, z as f64, r as f64));
             }
             Command::EnableRobot => {
-                println!("Got enable_robot command from AERA");
+                log::debug!("Got enable_robot command from AERA");
                 log_err(|| robot.enable_robot());
             }
         }
@@ -81,7 +82,7 @@ fn main() -> anyhow::Result<()> {
 fn log_err<T, E: fmt::Display>(f: impl FnOnce() -> Result<T, E>) {
     match f() {
         Ok(_) => {},
-        Err(e) => eprintln!("Error: Failed to send command to robot\n{e}"),
+        Err(e) => log::error!("Error: Failed to send command to robot\n{e}"),
     }
 }
 
@@ -90,7 +91,7 @@ fn run_feedback_loop(mut robot_feedback_conn: RobotFeedbackConn, feedback: Arc<M
         let res = match robot_feedback_conn.receive_feedback() {
             Ok(feedback) => feedback,
             Err(e) => {
-                eprintln!("Error receiving feedback {e:?}");
+                log::error!("Error receiving feedback {e:?}");
                 sleep(Duration::from_secs(1));
                 continue;
             }
@@ -99,4 +100,8 @@ fn run_feedback_loop(mut robot_feedback_conn: RobotFeedbackConn, feedback: Arc<M
 
         sleep(Duration::from_millis(10));
     }
+}
+
+fn setup_logging() {
+    simple_log::quick!();
 }

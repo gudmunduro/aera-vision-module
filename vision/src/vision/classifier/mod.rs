@@ -60,7 +60,7 @@ impl Classifier {
             })
             .max_by(|(_, sim_x), (_, sim_y)| sim_x.partial_cmp(sim_y).unwrap())?;
 
-        println!("Sim: {sim}");
+        log::debug!("Similairity score during classification: {sim}");
         if sim > CLASSIFIER_SIM_THRESHOLD {
             Some((class, sim))
         } else {
