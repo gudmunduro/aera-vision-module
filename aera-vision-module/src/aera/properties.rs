@@ -32,6 +32,11 @@ impl CameraObject {
             class: -1,
         }
     }
+
+    pub fn set_default(&mut self) {
+        self.position = Vector2::new(-1, -1);
+        self.class = -1;
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -5,16 +5,16 @@ use serde_big_array::BigArray;
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeedbackData {
     pub message_size: u16, // Total message size in bytes
-    pub reserved1: [i16; 3], // Reserved
+    pub reserved1: [i16; 3],
 
     pub digital_inputs: i32, // Digital inputs
     pub digital_outputs: i32, // Digital outputs
     pub robot_mode: i32, // Robot mode, 9 indicates an error
     pub time_stamp: i32, // Timestamp (in ms)
 
-    pub reserved2: i32, // Reserved
+    pub reserved2: i32,
     pub test_value: i32, // Memory structure test standard value 0x0123 4567 89AB CDEF
-    pub reserved3: f64, // Reserved
+    pub reserved3: f64,
 
     pub speed_scaling: f64, // Speed scaling
     pub linear_momentum_norm: f64, // Current robot momentum
@@ -22,8 +22,8 @@ pub struct FeedbackData {
     pub v_robot: f64, // Robot voltage
     pub i_robot: f64, // Robot current
 
-    pub reserved4: f64, // Reserved
-    pub reserved5: f64, // Reserved
+    pub reserved4: f64,
+    pub reserved5: f64,
 
     pub tool_accelerometer_values: [f64; 3], // TCP acceleration
     pub elbow_position: [f64; 3], // Elbow position
@@ -77,7 +77,7 @@ pub struct FeedbackData {
     pub six_force_online: u8, // Six-axis force online status
 
     #[serde(with = "BigArray")]
-    pub reserved6: [u8; 82], // Reserved
+    pub reserved6: [u8; 82],
 
     pub m_actual: [f64; 6], // Actual torque
     pub load: f64, // Load weight in kg
@@ -91,5 +91,5 @@ pub struct FeedbackData {
     pub target_quaternion: [f64; 4], // Target quaternion [qw, qx, qy, qz]
     pub actual_quaternion: [f64; 4], // Actual quaternion [qw, qx, qy, qz]
 
-    pub reserved7: [u8; 24], // Reserved
+    pub reserved7: [u8; 24],
 }

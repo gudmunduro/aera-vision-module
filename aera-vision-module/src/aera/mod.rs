@@ -74,7 +74,6 @@ impl AeraConn {
                         name: "mov_j".to_string(),
                     },
                     CommandDescription {
-                        // Params: [x, y, z, r (as deg)]
                         description: Some(VariableDescription {
                             entity_id: self.comm_ids.get("h"),
                             id: self.comm_ids.get("enable_robot"),
@@ -106,7 +105,7 @@ impl AeraConn {
         let message = TcpMessage {
             message_type: tcp_message::Type::Data as i32,
             message: Some(tcp_message::Message::DataMessage(protobuf::DataMessage {
-                variables: vec![
+                variables: [
                     self.camera_object_properties("co1", &properties.co1),
                     self.camera_object_properties("co2", &properties.co2),
                     self.camera_object_properties("co3", &properties.co3),
@@ -131,7 +130,7 @@ impl AeraConn {
                     dimensions: vec![2],
                     opcode_string_handle: "vec2".to_string(),
                 }),
-                data: object.position.as_slice().iter().flat_map(|v| v.to_le_bytes()).collect(),
+                data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {
@@ -156,7 +155,7 @@ impl AeraConn {
                     dimensions: vec![4],
                     opcode_string_handle: "vec4".to_string(),
                 }),
-                data: object.position.as_slice().iter().flat_map(|v| v.to_le_bytes()).collect(),
+                data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
         ]
     }
@@ -206,6 +205,10 @@ impl AeraConn {
         };
 
         Ok(res_cmd)
+    }
+
+    pub fn increase_timestamp(&mut self) {
+        self.timestamp += 100;
     }
 }
 

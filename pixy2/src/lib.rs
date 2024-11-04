@@ -1,5 +1,5 @@
 use std::alloc::{alloc, Layout};
-use std::ptr;
+use std::{ptr, slice};
 use std::ptr::null_mut;
 
 use anyhow::{bail, Ok};
@@ -41,11 +41,9 @@ impl PixyCamera {
             ffi::get_raw_frame(&mut bayer_frame);
         }
         let bayer_frame = unsafe {
-            let bayer_frame_copy: *mut u8 = alloc(Layout::new::<[u8; PIXY2_BAYER_FRAME_BUFFER_SIZE]>());
-            ptr::copy_nonoverlapping(bayer_frame, bayer_frame_copy, PIXY2_BAYER_FRAME_BUFFER_SIZE);
-            Vec::from_raw_parts(bayer_frame_copy, PIXY2_BAYER_FRAME_BUFFER_SIZE, PIXY2_BAYER_FRAME_BUFFER_SIZE)
+            slice::from_raw_parts(bayer_frame, PIXY2_BAYER_FRAME_BUFFER_SIZE)
         };
-        let rgb_frame = demosic(PIXY2_RAW_FRAME_WIDTH, PIXY2_RAW_FRAME_HEIGHT, bayer_frame.as_slice());
+        let rgb_frame = demosic(PIXY2_RAW_FRAME_WIDTH, PIXY2_RAW_FRAME_HEIGHT, bayer_frame);
         let image_data = rgb_frame
             .as_slice()
             .iter()
@@ -61,85 +59,83 @@ fn demosic(width: usize, height: usize, bayer_image: &[u8]) -> Vec<u32> {
 
     // Gpt converted code, should probably be rewritten
     for y in 0..height {
-        for y in 0..height {
-            let mut yy = y;
-            if yy == 0 {
-                yy += 1;
-            } else if yy == height - 1 {
-                yy -= 1;
+        let mut yy = y;
+        if yy == 0 {
+            yy += 1;
+        } else if yy == height - 1 {
+            yy -= 1;
+        }
+        let pixel0_offset = yy * width;
+        for x in 0..width {
+            let mut xx = x;
+            if xx == 0 {
+                xx += 1;
+            } else if xx == width - 1 {
+                xx -= 1;
             }
-            let pixel0_offset = yy * width;
-            for x in 0..width {
-                let mut xx = x;
-                if xx == 0 {
-                    xx += 1;
-                } else if xx == width - 1 {
-                    xx -= 1;
-                }
-                let pixel_index = pixel0_offset + xx;
-    
-                let (r, g, b) = if yy % 2 == 1 {
-                    if xx % 2 == 1 {
-                        // Red pixel
-                        let r = bayer_image[pixel_index] as u32;
-                        let g = (
-                            bayer_image[pixel_index - 1] as u32
-                                + bayer_image[pixel_index + 1] as u32
-                                + bayer_image[pixel_index - width] as u32
-                                + bayer_image[pixel_index + width] as u32
-                        ) >> 2;
-                        let b = (
-                            bayer_image[pixel_index - width - 1] as u32
-                                + bayer_image[pixel_index - width + 1] as u32
-                                + bayer_image[pixel_index + width - 1] as u32
-                                + bayer_image[pixel_index + width + 1] as u32
-                        ) >> 2;
-                        (r, g, b)
-                    } else {
-                        // Green pixel on red row
-                        let r = (
-                            bayer_image[pixel_index - 1] as u32 + bayer_image[pixel_index + 1] as u32
-                        ) >> 1;
-                        let g = bayer_image[pixel_index] as u32;
-                        let b = (
-                            bayer_image[pixel_index - width] as u32
-                                + bayer_image[pixel_index + width] as u32
-                        ) >> 1;
-                        (r, g, b)
-                    }
+            let pixel_index = pixel0_offset + xx;
+
+            let (r, g, b) = if yy % 2 == 1 {
+                if xx % 2 == 1 {
+                    // Red pixel
+                    let r = bayer_image[pixel_index] as u32;
+                    let g = (
+                        bayer_image[pixel_index - 1] as u32
+                            + bayer_image[pixel_index + 1] as u32
+                            + bayer_image[pixel_index - width] as u32
+                            + bayer_image[pixel_index + width] as u32
+                    ) >> 2;
+                    let b = (
+                        bayer_image[pixel_index - width - 1] as u32
+                            + bayer_image[pixel_index - width + 1] as u32
+                            + bayer_image[pixel_index + width - 1] as u32
+                            + bayer_image[pixel_index + width + 1] as u32
+                    ) >> 2;
+                    (r, g, b)
                 } else {
-                    if xx % 2 == 1 {
-                        // Green pixel on blue row
-                        let r = (
-                            bayer_image[pixel_index - width] as u32
-                                + bayer_image[pixel_index + width] as u32
-                        ) >> 1;
-                        let g = bayer_image[pixel_index] as u32;
-                        let b = (
-                            bayer_image[pixel_index - 1] as u32 + bayer_image[pixel_index + 1] as u32
-                        ) >> 1;
-                        (r, g, b)
-                    } else {
-                        // Blue pixel
-                        let r = (
-                            bayer_image[pixel_index - width - 1] as u32
-                                + bayer_image[pixel_index - width + 1] as u32
-                                + bayer_image[pixel_index + width - 1] as u32
-                                + bayer_image[pixel_index + width + 1] as u32
-                        ) >> 2;
-                        let g = (
-                            bayer_image[pixel_index - 1] as u32
-                                + bayer_image[pixel_index + 1] as u32
-                                + bayer_image[pixel_index - width] as u32
-                                + bayer_image[pixel_index + width] as u32
-                        ) >> 2;
-                        let b = bayer_image[pixel_index] as u32;
-                        (r, g, b)
-                    }
-                };
-    
-                image[x + width * y] = (r << 16) | (g << 8) | b;
-            }
+                    // Green pixel on red row
+                    let r = (
+                        bayer_image[pixel_index - 1] as u32 + bayer_image[pixel_index + 1] as u32
+                    ) >> 1;
+                    let g = bayer_image[pixel_index] as u32;
+                    let b = (
+                        bayer_image[pixel_index - width] as u32
+                            + bayer_image[pixel_index + width] as u32
+                    ) >> 1;
+                    (r, g, b)
+                }
+            } else {
+                if xx % 2 == 1 {
+                    // Green pixel on blue row
+                    let r = (
+                        bayer_image[pixel_index - width] as u32
+                            + bayer_image[pixel_index + width] as u32
+                    ) >> 1;
+                    let g = bayer_image[pixel_index] as u32;
+                    let b = (
+                        bayer_image[pixel_index - 1] as u32 + bayer_image[pixel_index + 1] as u32
+                    ) >> 1;
+                    (r, g, b)
+                } else {
+                    // Blue pixel
+                    let r = (
+                        bayer_image[pixel_index - width - 1] as u32
+                            + bayer_image[pixel_index - width + 1] as u32
+                            + bayer_image[pixel_index + width - 1] as u32
+                            + bayer_image[pixel_index + width + 1] as u32
+                    ) >> 2;
+                    let g = (
+                        bayer_image[pixel_index - 1] as u32
+                            + bayer_image[pixel_index + 1] as u32
+                            + bayer_image[pixel_index - width] as u32
+                            + bayer_image[pixel_index + width] as u32
+                    ) >> 2;
+                    let b = bayer_image[pixel_index] as u32;
+                    (r, g, b)
+                }
+            };
+
+            image[x + width * y] = (r << 16) | (g << 8) | b;
         }
     }
 

@@ -11,12 +11,12 @@ pub mod aera;
 pub mod robot;
 
 fn main() -> anyhow::Result<()> {
+    let mut robot = RobotConn::connect().expect("Failed to connect to robot");
+    let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
     let mut aera = AeraConn::connect("127.0.0.1")?;
     aera.wait_for_start_message()?;
     let mut vision = VisionSystem::new();
     let pixy = PixyCamera::init()?;
-    let mut robot = RobotConn::connect().expect("Failed to connect to robot");
-    let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
 
     {
@@ -30,12 +30,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut properties = Properties::new();
     loop {
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_secs(3));
         
         // Get data from camera
         let frame = pixy.get_frame()?;
         let objects = vision.process_frame(&frame)?;
-        let cam_objs = [&mut properties.co1, &mut properties.co2, &mut properties.co3];
+        let mut cam_objs = [&mut properties.co1, &mut properties.co2, &mut properties.co3];
+        cam_objs.iter_mut().for_each(|c| c.set_default());
         for i in 0..objects.len().min(3) {
             let area = &objects[i].area;
 
@@ -48,8 +49,10 @@ fn main() -> anyhow::Result<()> {
         let [.., x, y, z] = feedback_data.tool_vector_actual;
         let [r, ..] = feedback_data.tcp_speed_actual;
         properties.h.position = Vector4::new(x.round() as i64, y.round() as i64, z.round() as i64, r.round() as i64);
+        drop(feedback_data);
 
         // Send to AERA
+        println!("Sending position ({}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z);
         aera.send_properties(&properties)?;
         
         // Handle command from AERA
@@ -70,6 +73,8 @@ fn main() -> anyhow::Result<()> {
                 log_err(|| robot.enable_robot());
             }
         }
+
+        aera.increase_timestamp();
     }
 }
 
