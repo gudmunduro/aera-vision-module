@@ -33,6 +33,13 @@ impl RobotConn {
 
         Ok(())
     }
+
+    pub fn set_do(&mut self, index: i32, status: bool) -> anyhow::Result<()> {
+        let status = status as i32;
+        write!(&mut self.dashboard_cmd_stream, "DO({index}, {status})\n")?;
+
+        Ok(())
+    }
  
     pub fn mov_j(&mut self, x: f64, y: f64, z: f64, r: f64) -> anyhow::Result<()> {
         write!(&mut self.motion_cmd_stream, "MovJ({x}, {y}, {z}, {r})\n")?;

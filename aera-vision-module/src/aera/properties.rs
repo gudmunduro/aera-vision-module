@@ -42,12 +42,14 @@ impl CameraObject {
 #[derive(Debug, Clone)]
 pub struct HandObject {
     pub position: Vector4<i64>,
+    pub holding: bool
 }
 
 impl HandObject {
     pub fn new() -> HandObject {
         HandObject {
             position: Vector4::new(0, 0, 0, 0),
+            holding: false
         }
     }
 }

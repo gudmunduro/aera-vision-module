@@ -24,7 +24,7 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "size", "obj_type", "mov_j", "enable_robot"]);
+        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "enable_robot", "grab", "release"]);
 
         let mut aera_conn = AeraConn { stream, comm_ids, timestamp: 0 };
         aera_conn.send_setup_command()?;
@@ -54,11 +54,14 @@ impl AeraConn {
                 ]),
                 objects: HashMap::from([
                     ("position".to_string(), self.comm_ids.get("position")),
+                    ("holding".to_string(), self.comm_ids.get("holding")),
                     ("size".to_string(), self.comm_ids.get("size")),
                     ("obj_type".to_string(), self.comm_ids.get("obj_type")),
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
+                    ("grab".to_string(), self.comm_ids.get("grab")),
+                    ("release".to_string(), self.comm_ids.get("release")),
                     ("enable_robot".to_string(), self.comm_ids.get("enable_robot"))
                 ]),
                 command_descriptions: vec![
@@ -72,6 +75,26 @@ impl AeraConn {
                             opcode_string_handle: "vec4".to_string(),
                         }),
                         name: "mov_j".to_string(),
+                    },
+                    CommandDescription {
+                        description: Some(VariableDescription {
+                            entity_id: self.comm_ids.get("h"),
+                            id: self.comm_ids.get("grab"),
+                            data_type: variable_description::DataType::Int64 as i32,
+                            dimensions: vec![0],
+                            opcode_string_handle: String::new()
+                        }),
+                        name: "grab".to_string(),
+                    },
+                    CommandDescription {
+                        description: Some(VariableDescription {
+                            entity_id: self.comm_ids.get("h"),
+                            id: self.comm_ids.get("release"),
+                            data_type: variable_description::DataType::Int64 as i32,
+                            dimensions: vec![0],
+                            opcode_string_handle: String::new()
+                        }),
+                        name: "release".to_string(),
                     },
                     CommandDescription {
                         description: Some(VariableDescription {
@@ -157,6 +180,16 @@ impl AeraConn {
                 }),
                 data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
+            ProtoVariable {
+                meta_data: Some(VariableDescription {
+                    entity_id: self.comm_ids.get(name),
+                    id: self.comm_ids.get("holding"),
+                    data_type: variable_description::DataType::Int64 as i32,
+                    dimensions: vec![1],
+                    opcode_string_handle: "set".to_string(),
+                }),
+                data: (object.holding as i64).to_le_bytes().to_vec(),
+            },
         ]
     }
 
@@ -198,6 +231,10 @@ impl AeraConn {
                 le_bytes_to_i64(&command_var.data[16..24]),
                 le_bytes_to_i64(&command_var.data[24..32]),
             )
+        } else if meta.id == self.comm_ids.get("grab") {
+            Command::Grab
+        } else if meta.id == self.comm_ids.get("release") {
+            Command::Release
         } else if meta.id == self.comm_ids.get("enable_robot") {
             Command::EnableRobot
         } else {
