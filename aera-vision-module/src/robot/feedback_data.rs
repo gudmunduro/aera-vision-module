@@ -5,15 +5,15 @@ use serde_big_array::BigArray;
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeedbackData {
     pub message_size: u16, // Total message size in bytes
-    pub reserved1: [i16; 3],
+    pub reserved1: [u16; 3],
 
-    pub digital_inputs: i32, // Digital inputs
-    pub digital_outputs: i32, // Digital outputs
-    pub robot_mode: i32, // Robot mode, 9 indicates an error
-    pub time_stamp: i32, // Timestamp (in ms)
+    pub digital_inputs: u64, // Digital inputs
+    pub digital_outputs: u64, // Digital outputs
+    pub robot_mode: u64, // Robot mode, 9 indicates an error
+    pub time_stamp: u64, // Timestamp (in ms)
 
-    pub reserved2: i32,
-    pub test_value: i32, // Memory structure test standard value 0x0123 4567 89AB CDEF
+    pub reserved2: u64,
+    pub test_value: u64, // Memory structure test standard value 0x0123 4567 89AB CDEF
     pub reserved3: f64,
 
     pub speed_scaling: f64, // Speed scaling

@@ -12,18 +12,21 @@ pub mod robot;
 
 fn main() -> anyhow::Result<()> {
     setup_logging();
+
+    log::info!("Connecting to AERA");
+    let mut aera = AeraConn::connect("127.0.0.1")?;
+    let mut properties = Properties::new();
+    log::debug!("Wating for start message");
+    aera.wait_for_start_message()?;
+
     log::info!("Connecting to robot");
     let mut robot = RobotConn::connect().expect("Failed to connect to robot");
     let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
-    log::info!("Connecting to AERA");
-    let mut aera = AeraConn::connect("127.0.0.1")?;
-    log::debug!("Wating for start message");
-    aera.wait_for_start_message()?;
-    let mut vision = VisionSystem::new();
+    let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
+    
     log::info!("Connecting to pixy");
     let pixy = PixyCamera::init()?;
-    let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
-    let mut properties = Properties::new();
+    let mut vision = VisionSystem::new();
 
     {
         log::info!("Getting initial feedback...");
@@ -51,18 +54,20 @@ fn main() -> anyhow::Result<()> {
 
         // Get data from robot
         let feedback_data = feedback_data.lock().unwrap();
-        let [.., x, y, z] = feedback_data.tool_vector_actual;
-        let [r, ..] = feedback_data.tcp_speed_actual;
+        let [x, y, z, r, ..] = feedback_data.tool_vector_actual;
         properties.h.position = Vector4::new(x.round() as i64, y.round() as i64, z.round() as i64, r.round() as i64);
-        properties.h.holding = feedback_data.load > 0.0;
+        if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() == 0 {
+            properties.h.holding = Some("co1".to_string());
+        }
         drop(feedback_data);
 
         // Send to AERA
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
-        log::debug!("Hand holding: {}", properties.h.holding);
+        log::debug!("Hand holding: {:?}", properties.h.holding);
         aera.send_properties(&properties)?;
         
         // Handle command from AERA
+        log::debug!("Listening for command");
         let cmd = match aera.listen_for_command() {
             Ok(cmd) => cmd,
             Err(e) => {
@@ -71,14 +76,19 @@ fn main() -> anyhow::Result<()> {
             }
         };
         match cmd {
+            Command::EnableRobot => {
+                log::debug!("Got enable_robot command from AERA");
+                log_err(|| robot.enable_robot());
+            }
             Command::MovJ(x, y, z, r) => {
                 log::debug!("Got movj command from AERA to {x}, {y}, {z}, {r}");
                 log_err(|| robot.mov_j(x as f64, y as f64, z as f64, r as f64));
             }
-            Command::EnableRobot => {
-                log::debug!("Got enable_robot command from AERA");
-                log_err(|| robot.enable_robot());
-            },
+            Command::Move(x, y, z, r) => {
+                log::debug!("Got move (relative) command from AERA by {x}, {y}, {z}, {r}");
+                let pos = &properties.h.position;
+                log_err(|| robot.mov_j((pos.x + x) as f64, (pos.y + y) as f64, (pos.z + z) as f64, (pos.w + r) as f64));
+            }
             Command::Grab => {
                 log::debug!("Got grab command from AERA");
                 log_err(|| -> anyhow::Result<()> {
@@ -87,7 +97,7 @@ fn main() -> anyhow::Result<()> {
                     sleep(Duration::from_secs(1));
                     robot.set_do(3, true)?;
                     sleep(Duration::from_secs(1));
-                    let orig_pos = properties.h.position;
+                    let orig_pos = &properties.h.position;
                     robot.mov_j(orig_pos.x as f64, orig_pos.y as f64, orig_pos.z as f64, orig_pos.w as f64)?;
 
                     Ok(())
@@ -97,6 +107,7 @@ fn main() -> anyhow::Result<()> {
                 log::debug!("Got release command from AERA");
                 log_err(|| -> anyhow::Result<()> {
                     robot.set_do(3, false)?;
+                    properties.h.holding = None;
 
                     Ok(())
                 });

@@ -23,6 +23,7 @@ impl Properties {
 pub struct CameraObject {
     pub position: Vector2<i64>,
     pub class: i64,
+    pub size: i64
 }
 
 impl CameraObject {
@@ -30,26 +31,28 @@ impl CameraObject {
         CameraObject {
             position: Vector2::new(-1, -1),
             class: -1,
+            size: -1
         }
     }
 
     pub fn set_default(&mut self) {
         self.position = Vector2::new(-1, -1);
         self.class = -1;
+        self.size = -1;
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct HandObject {
     pub position: Vector4<i64>,
-    pub holding: bool
+    pub holding: Option<String>
 }
 
 impl HandObject {
     pub fn new() -> HandObject {
         HandObject {
             position: Vector4::new(0, 0, 0, 0),
-            holding: false
+            holding: None
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::{Read as _, Write}, net::TcpStream};
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use commands::Command;
 use properties::{CameraObject, HandObject, Properties};
 use prost::Message as _;
@@ -24,7 +24,7 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "enable_robot", "grab", "release"]);
+        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release"]);
 
         let mut aera_conn = AeraConn { stream, comm_ids, timestamp: 0 };
         aera_conn.send_setup_command()?;
@@ -60,6 +60,7 @@ impl AeraConn {
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
+                    ("move".to_string(), self.comm_ids.get("move")),
                     ("grab".to_string(), self.comm_ids.get("grab")),
                     ("release".to_string(), self.comm_ids.get("release")),
                     ("enable_robot".to_string(), self.comm_ids.get("enable_robot"))
@@ -77,10 +78,21 @@ impl AeraConn {
                         name: "mov_j".to_string(),
                     },
                     CommandDescription {
+                        // Params: [x, y, z, r] relative
+                        description: Some(VariableDescription {
+                            entity_id: self.comm_ids.get("h"),
+                            id: self.comm_ids.get("move"),
+                            data_type: variable_description::DataType::Int64 as i32,
+                            dimensions: vec![4],
+                            opcode_string_handle: "vec4".to_string(),
+                        }),
+                        name: "move".to_string(),
+                    },
+                    CommandDescription {
                         description: Some(VariableDescription {
                             entity_id: self.comm_ids.get("h"),
                             id: self.comm_ids.get("grab"),
-                            data_type: variable_description::DataType::Int64 as i32,
+                            data_type: variable_description::DataType::CommunicationId as i32,
                             dimensions: vec![0],
                             opcode_string_handle: String::new()
                         }),
@@ -90,7 +102,7 @@ impl AeraConn {
                         description: Some(VariableDescription {
                             entity_id: self.comm_ids.get("h"),
                             id: self.comm_ids.get("release"),
-                            data_type: variable_description::DataType::Int64 as i32,
+                            data_type: variable_description::DataType::CommunicationId as i32,
                             dimensions: vec![0],
                             opcode_string_handle: String::new()
                         }),
@@ -169,7 +181,7 @@ impl AeraConn {
     }
 
     fn hand_object_properties(&self, name: &str, object: &HandObject) -> Vec<ProtoVariable> {
-        vec![
+        let mut objects = vec![
             ProtoVariable {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
@@ -180,22 +192,27 @@ impl AeraConn {
                 }),
                 data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
-            ProtoVariable {
+        ];
+
+        if let Some(o) = &object.holding {
+            objects.push(ProtoVariable {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
                     id: self.comm_ids.get("holding"),
-                    data_type: variable_description::DataType::Int64 as i32,
+                    data_type: variable_description::DataType::CommunicationId as i32,
                     dimensions: vec![1],
                     opcode_string_handle: "set".to_string(),
                 }),
-                data: (object.holding as i64).to_le_bytes().to_vec(),
-            },
-        ]
+                data: (self.comm_ids.get(o) as i64).to_le_bytes().to_vec(),
+            });
+        }
+
+        objects
     }
 
     fn listen_for_message(&mut self) -> anyhow::Result<TcpMessage> {
         let mut size_buf = vec![0; 8];
-        self.stream.read_exact(&mut size_buf[0..8])?;
+        self.stream.read_exact(&mut size_buf[..])?;
         let size = le_bytes_to_u64(&size_buf[..]);
 
         let mut data_buf = vec![0; size as usize];
@@ -224,21 +241,26 @@ impl AeraConn {
             .as_ref()
             .ok_or(anyhow::anyhow!("Missing metadata in cmd"))?;
 
-        let res_cmd = if meta.id == self.comm_ids.get("mov_j") {
-            Command::MovJ(
+        let command_key = self.comm_ids.get_key(meta.id)
+            .ok_or(anyhow::anyhow!("Unspported cmd with id {}", meta.id))?;
+
+        let res_cmd = match command_key {
+            "mov_j" => Command::MovJ(
                 le_bytes_to_i64(&command_var.data[0..8]),
                 le_bytes_to_i64(&command_var.data[8..16]),
                 le_bytes_to_i64(&command_var.data[16..24]),
                 le_bytes_to_i64(&command_var.data[24..32]),
-            )
-        } else if meta.id == self.comm_ids.get("grab") {
-            Command::Grab
-        } else if meta.id == self.comm_ids.get("release") {
-            Command::Release
-        } else if meta.id == self.comm_ids.get("enable_robot") {
-            Command::EnableRobot
-        } else {
-            bail!("Invalid cmd with id {}", meta.id)
+            ),
+            "move" => Command::Move(
+                le_bytes_to_i64(&command_var.data[0..8]),
+                le_bytes_to_i64(&command_var.data[8..16]),
+                le_bytes_to_i64(&command_var.data[16..24]),
+                le_bytes_to_i64(&command_var.data[24..32]),
+            ),
+            "grab" => Command::Grab,
+            "release" => Command::Release,
+            "enable_robot" => Command::EnableRobot,
+            _ => bail!("Unhandled cmd with id {}", meta.id)
         };
 
         Ok(res_cmd)
@@ -272,6 +294,10 @@ impl CommIds {
 
     pub fn get(&self, key: &str) -> i32 {
         *self.id_map.get(key).unwrap()
+    }
+
+    pub fn get_key(&self, index: i32) -> Option<&str> {
+        self.id_map.iter().find(|(_, v)| **v == index).map(|(k, _)| k.as_str())
     }
 }
 
