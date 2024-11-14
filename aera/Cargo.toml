@@ -1,0 +1,13 @@
+[package]
+name = "aera"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.13.3"
+anyhow = "1.0.90"
+nalgebra = "0.33.1"
+log = "0.4.22"
+
+[build-dependencies]
+prost-build = "0.13.3"

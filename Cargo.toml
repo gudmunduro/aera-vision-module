@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = [ "aera-vision-module", "pixy2", "vision"]
+members = [ "aera", "aera-vision-simulator", "aera-vision-module", "pixy2", "robot", "vision"]

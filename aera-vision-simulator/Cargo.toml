@@ -1,15 +1,12 @@
 [package]
-name = "aera-vision-module"
+name = "aera-vision-simulator"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-opencv = "0.93.3"
-vision = { path = "../vision" }
-pixy2 = { path = "../pixy2" }
 aera = { path = "../aera" }
-robot = { path = "../robot" }
 anyhow = "1.0.90"
 nalgebra = "0.33.1"
 log = "0.4.22"
 simple-log = "2.1.1"
+rand = "0.8.5"

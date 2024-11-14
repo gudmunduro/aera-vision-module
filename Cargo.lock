@@ -9,21 +9,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
-name = "aera-vision-module"
+name = "aera"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bincode",
+ "log",
+ "nalgebra",
+ "prost 0.13.3",
+ "prost-build 0.13.3",
+]
+
+[[package]]
+name = "aera-vision-module"
+version = "0.1.0"
+dependencies = [
+ "aera",
+ "anyhow",
  "log",
  "nalgebra",
  "opencv",
  "pixy2",
- "prost 0.13.3",
- "prost-build 0.13.3",
- "serde",
- "serde-big-array",
+ "robot",
  "simple-log",
  "vision",
+]
+
+[[package]]
+name = "aera-vision-simulator"
+version = "0.1.0"
+dependencies = [
+ "aera",
+ "anyhow",
+ "log",
+ "nalgebra",
+ "rand",
+ "simple-log",
 ]
 
 [[package]]
@@ -1323,6 +1343,17 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
+
+[[package]]
+name = "robot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "prost 0.13.3",
+ "serde",
+ "serde-big-array",
+]
 
 [[package]]
 name = "rustix"

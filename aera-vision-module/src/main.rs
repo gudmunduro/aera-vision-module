@@ -7,14 +7,12 @@ use pixy2::PixyCamera;
 use robot::{feedback_data::{self, FeedbackData}, RobotConn, RobotFeedbackConn};
 use vision::{RecognizedArea, VisionSystem};
 
-pub mod aera;
-pub mod robot;
 
 fn main() -> anyhow::Result<()> {
     setup_logging();
 
     log::info!("Connecting to AERA");
-    let mut aera = AeraConn::connect("127.0.0.1")?;
+    let mut aera = AeraConn::connect("192.168.72.143")?;
     let mut properties = Properties::new();
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
@@ -64,7 +62,7 @@ fn main() -> anyhow::Result<()> {
         // Send to AERA
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
         log::debug!("Hand holding: {:?}", properties.h.holding);
-        aera.send_properties(&properties)?;
+        aera.send_properties(&properties, Some(&Command::Move(10, 10, 10, 10)))?;
         
         // Handle command from AERA
         log::debug!("Listening for command");
