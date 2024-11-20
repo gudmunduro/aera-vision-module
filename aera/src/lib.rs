@@ -188,6 +188,7 @@ impl AeraConn {
     }
 
     fn hand_object_properties(&self, name: &str, object: &HandObject) -> Vec<ProtoVariable> {
+        log::debug!("Holding {}", object.holding.as_ref().map(|o|self.comm_ids.get(o) as i64).unwrap_or(-1));
         vec![
             ProtoVariable {
                 meta_data: Some(VariableDescription {
