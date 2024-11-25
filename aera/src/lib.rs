@@ -25,7 +25,7 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(6)))?;
         let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "predicted_grab_pos"]);
 
         let commands = [
@@ -56,8 +56,8 @@ impl AeraConn {
                     entity_id: comm_ids.get("h"),
                     id: comm_ids.get("grab"),
                     data_type: variable_description::DataType::CommunicationId as i32,
-                    dimensions: vec![0],
-                    opcode_string_handle: String::new()
+                    dimensions: vec![1],
+                    opcode_string_handle: "set".to_string()
                 }),
                 name: "grab".to_string(),
             },
@@ -136,7 +136,8 @@ impl AeraConn {
     }
 
     pub fn wait_for_start_message(&mut self) -> anyhow::Result<()> {
-        let message = self.listen_for_message()?;
+        let message = self.listen_for_message()?
+            .ok_or(anyhow!("Timed out waiting for start message"))?;
         if message.message_type == tcp_message::Type::Start as i32 {
             Ok(())
         } else {
@@ -250,19 +251,35 @@ impl AeraConn {
         }
     }
 
-    fn listen_for_message(&mut self) -> anyhow::Result<TcpMessage> {
+    fn listen_for_message(&mut self) -> anyhow::Result<Option<TcpMessage>> {
         let mut size_buf = vec![0; 8];
-        self.stream.read_exact(&mut size_buf[..])?;
+        match self.stream.read_exact(&mut size_buf[..]) {
+            Ok(()) => {}
+            Err(e) => {
+                return if e.kind() == std::io::ErrorKind::TimedOut {
+                    Ok(None)
+                }
+                else {
+                    Err(e.into())
+                };
+            }
+        }
         let size = le_bytes_to_u64(&size_buf[..]);
 
         let mut data_buf = vec![0; size as usize];
         self.stream.read_exact(&mut data_buf[..])?;
 
-        Ok(protobuf::TcpMessage::decode(data_buf.as_slice())?)
+
+        Ok(Some(protobuf::TcpMessage::decode(data_buf.as_slice())?))
     }
 
-    pub fn listen_for_command(&mut self) -> anyhow::Result<Command> {
-        let message = self.listen_for_message()?;
+    pub fn listen_for_command(&mut self) -> anyhow::Result<Option<Command>> {
+        let message = match self.listen_for_message()? {
+            Some(msg) => msg,
+            None => {
+                return Ok(None);
+            }
+        };
 
         let dm = match message.message {
             Some(tcp_message::Message::DataMessage(dm)) => dm,
@@ -303,7 +320,7 @@ impl AeraConn {
             _ => bail!("Unhandled cmd with id {}", meta.id)
         };
 
-        Ok(res_cmd)
+        Ok(Some(res_cmd))
     }
 
     pub fn increase_timestamp(&mut self) {

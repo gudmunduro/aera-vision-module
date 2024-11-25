@@ -19,13 +19,7 @@ fn main() -> anyhow::Result<()> {
     let mut sim_cube = SimCube::initial();
     set_initial_state(&mut properties, &mut sim_cube);
 
-    let mut rng = thread_rng();
-
-    let random_commands = (0..200).into_iter()
-        .map(|_| gen_random_command(&mut rng))
-        .collect::<Vec<_>>();
-
-    let mut forced_commands = VecDeque::new();
+    let mut forced_commands = VecDeque::from([]);
 
     log::info!("Starting main loop");
     loop {
@@ -44,7 +38,11 @@ fn main() -> anyhow::Result<()> {
         } else {
             log::debug!("Listening for command");
             match aera.listen_for_command() {
-                Ok(cmd) => cmd,
+                Ok(Some(cmd)) => cmd,
+                Ok(None) => {
+                    log::error!("Timed out waiting for command from AERA");
+                    continue;
+                }
                 Err(e) => {
                     log::error!("Error receiving command from AERA: {e}");
                     continue;
