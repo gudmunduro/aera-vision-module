@@ -1,7 +1,7 @@
 use std::{fmt, process::exit, sync::{Arc, Mutex}, thread::{self, sleep}, time::Duration, u64};
 
 use aera::{commands::Command, properties::Properties, protobuf::{tcp_message, variable_description, DataMessage, ProtoVariable, VariableDescription}, AeraConn};
-use nalgebra::Vector4;
+use nalgebra::{Vector2, Vector4};
 use opencv::imgcodecs::{self, IMREAD_COLOR};
 use pixy2::PixyCamera;
 use robot::{feedback_data::{self, FeedbackData}, RobotConn, RobotFeedbackConn};
@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     log::info!("Starting main loop");
     loop {
         sleep(Duration::from_secs(3));
-        
+
         // Get data from camera
         let frame = pixy.get_frame()?;
         let objects = vision.process_frame(&frame)?;
@@ -56,6 +56,9 @@ fn main() -> anyhow::Result<()> {
         properties.h.position = Vector4::new(x.round() as i64, y.round() as i64, z.round() as i64, r.round() as i64);
         if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() == 0 {
             properties.h.holding = Some("co1".to_string());
+        }
+        for co in cam_objs {
+            co.predicted_grab_pos = calculate_predicted_grab_pos(&properties.h.position, &co.position);
         }
         drop(feedback_data);
 
@@ -114,6 +117,16 @@ fn main() -> anyhow::Result<()> {
 
         aera.increase_timestamp();
     }
+}
+
+fn calculate_predicted_grab_pos(hand_pos: &Vector4<i64>, co_pos: &Vector2<i64>) -> Vector4<i64> {
+    const CAM_GRAB_POS: Vector2<i64> = Vector2::new(148, 171);
+    let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y);
+    let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) as f64 / 1.175) as i64;
+    let pred_z = 0_i64;
+    let pred_w = 45_i64;
+
+    Vector4::new(pred_x, pred_y, pred_z, pred_w)
 }
 
 fn log_err<T, E: fmt::Display>(f: impl FnOnce() -> Result<T, E>) {

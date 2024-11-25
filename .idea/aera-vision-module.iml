@@ -5,6 +5,9 @@
       <sourceFolder url="file://$MODULE_DIR$/aera-vision-module/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/pixy2/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/vision/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/aera-vision-simulator/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/aera/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/robot/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

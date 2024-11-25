@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
     aera.wait_for_start_message()?;
 
     let mut sim_cube = SimCube::initial();
-    set_initial_state(&mut properties, &sim_cube);
+    set_initial_state(&mut properties, &mut sim_cube);
 
     let mut rng = thread_rng();
 
@@ -33,6 +33,7 @@ fn main() -> anyhow::Result<()> {
 
         let cmd_to_send = forced_commands.pop_front();
         properties.co1.position = sim_cube.pos;
+        properties.co1.predicted_grab_pos = sim_cube.predicted_grab_pos;
 
         log::debug!("Sending properties");
         aera.send_properties(&properties, cmd_to_send.as_ref())?;
@@ -58,13 +59,13 @@ fn main() -> anyhow::Result<()> {
                 log::debug!("Got movj command from AERA to {x}, {y}, {z}, {r}");
                 let old_pos = properties.h.position;
                 properties.h.position = Vector4::new(x, y, z, r);
-                sim_cube.move_hand_by(properties.h.position.x - old_pos.x, properties.h.position.y - old_pos.y);
+                sim_cube.move_hand(&(properties.h.position - old_pos), &properties.h.position);
             }
             Command::Move(x, y, z, r) => {
                 log::debug!("Got move (relative) command from AERA by {x}, {y}, {z}, {r}");
                 let current_pos = properties.h.position;
                 properties.h.position = Vector4::new(current_pos.x + x, current_pos.y + y, current_pos.z + z, current_pos.w + r);
-                sim_cube.move_hand_by(x, y);
+                sim_cube.move_hand(&Vector4::new(x, y, z, r), &properties.h.position);
             }
             Command::Grab => {
                 log::debug!("Got grab command from AERA");
@@ -80,12 +81,14 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn set_initial_state(properties: &mut Properties, sim_cube: &SimCube) {
+fn set_initial_state(properties: &mut Properties, sim_cube: &mut SimCube) {
     properties.h.position = Vector4::new(240, -40, -6, 55);
 
     properties.co1.position = sim_cube.pos;
     properties.co1.class = 0;
     properties.co1.size = 1;
+
+    sim_cube.move_hand(&Vector4::new(0, 0, 0, 0), &properties.h.position);
 }
 
 fn setup_logging() {

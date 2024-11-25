@@ -1,5 +1,5 @@
 use std::{collections::HashMap, io::{Read as _, Write}, net::TcpStream};
-
+use std::time::Duration;
 use anyhow::{anyhow, bail};
 use commands::Command;
 use properties::{CameraObject, HandObject, Properties};
@@ -25,7 +25,8 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release"]);
+        stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "predicted_grab_pos"]);
 
         let commands = [
             CommandDescription {
@@ -116,6 +117,7 @@ impl AeraConn {
                     ("holding".to_string(), self.comm_ids.get("holding")),
                     ("size".to_string(), self.comm_ids.get("size")),
                     ("obj_type".to_string(), self.comm_ids.get("obj_type")),
+                    ("predicted_grab_pos".to_string(), self.comm_ids.get("predicted_grab_pos")),
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
@@ -173,6 +175,16 @@ impl AeraConn {
                     opcode_string_handle: "vec2".to_string(),
                 }),
                 data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
+            },
+            ProtoVariable {
+                meta_data: Some(VariableDescription {
+                    entity_id: self.comm_ids.get(name),
+                    id: self.comm_ids.get("predicted_grab_pos"),
+                    data_type: variable_description::DataType::Int64 as i32,
+                    dimensions: vec![4],
+                    opcode_string_handle: "vec4".to_string(),
+                }),
+                data: object.predicted_grab_pos.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {
