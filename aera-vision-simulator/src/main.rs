@@ -82,10 +82,13 @@ fn main() -> anyhow::Result<()> {
             Command::Grab => {
                 log::debug!("Got grab command from AERA");
                 properties.h.holding = Some("co1".to_string());
+                sim_cube.visible = false;
             }
             Command::Release => {
                 log::debug!("Got release command from AERA");
                 properties.h.holding = None;
+                properties.co1.approximate_pos.z = -140;
+                sim_cube.visible = true;
             }
         }
 

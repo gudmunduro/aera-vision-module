@@ -25,7 +25,7 @@ pub struct AeraConn {
 impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
-        stream.set_read_timeout(Some(Duration::from_secs(6)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(70)))?;
         let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "approximate_pos"]);
 
         let commands = [
