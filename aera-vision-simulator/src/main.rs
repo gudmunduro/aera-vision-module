@@ -26,8 +26,22 @@ fn main() -> anyhow::Result<()> {
         sleep(Duration::from_millis(500));
 
         let cmd_to_send = forced_commands.pop_front();
-        properties.co1.position = sim_cube.pos;
-        properties.co1.predicted_grab_pos = sim_cube.predicted_grab_pos;
+        if sim_cube.visible {
+            properties.co1.position = sim_cube.pos;
+            properties.co1.approximate_pos = sim_cube.approximte_pos;
+            properties.co1.class = 0;
+        }
+        else {
+            properties.co1.position = Vector2::new(-1, -1);
+            if properties.h.holding.is_some() {
+                properties.co1.approximate_pos = properties.h.position;
+                properties.co1.class = 0;
+            }
+            else {
+                properties.co1.approximate_pos = Vector4::new(-1, -1, -1, -1);
+                properties.co1.class = -1;
+            }
+        }
 
         log::debug!("Sending properties");
         aera.send_properties(&properties, cmd_to_send.as_ref())?;
@@ -80,7 +94,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn set_initial_state(properties: &mut Properties, sim_cube: &mut SimCube) {
-    properties.h.position = Vector4::new(240, -40, -6, 55);
+    properties.h.position = Vector4::new(240, 0, 0, 45);
 
     properties.co1.position = sim_cube.pos;
     properties.co1.class = 0;

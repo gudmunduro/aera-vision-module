@@ -22,7 +22,7 @@ impl Properties {
 #[derive(Debug, Clone)]
 pub struct CameraObject {
     pub position: Vector2<i64>,
-    pub predicted_grab_pos: Vector4<i64>,
+    pub approximate_pos: Vector4<i64>,
     pub class: i64,
     pub size: i64
 }
@@ -31,7 +31,7 @@ impl CameraObject {
     pub fn new() -> CameraObject {
         CameraObject {
             position: Vector2::new(-1, -1),
-            predicted_grab_pos: Vector4::new(-1, -1, -1, -1),
+            approximate_pos: Vector4::new(-1, -1, -1, -1),
             class: -1,
             size: -1
         }

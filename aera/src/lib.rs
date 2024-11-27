@@ -26,7 +26,7 @@ impl AeraConn {
     pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
         stream.set_read_timeout(Some(Duration::from_secs(6)))?;
-        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "predicted_grab_pos"]);
+        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "approximate_pos"]);
 
         let commands = [
             CommandDescription {
@@ -56,8 +56,8 @@ impl AeraConn {
                     entity_id: comm_ids.get("h"),
                     id: comm_ids.get("grab"),
                     data_type: variable_description::DataType::CommunicationId as i32,
-                    dimensions: vec![1],
-                    opcode_string_handle: "set".to_string()
+                    dimensions: vec![0],
+                    opcode_string_handle: String::new()
                 }),
                 name: "grab".to_string(),
             },
@@ -117,7 +117,7 @@ impl AeraConn {
                     ("holding".to_string(), self.comm_ids.get("holding")),
                     ("size".to_string(), self.comm_ids.get("size")),
                     ("obj_type".to_string(), self.comm_ids.get("obj_type")),
-                    ("predicted_grab_pos".to_string(), self.comm_ids.get("predicted_grab_pos")),
+                    ("approximate_pos".to_string(), self.comm_ids.get("approximate_pos")),
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
@@ -180,12 +180,12 @@ impl AeraConn {
             ProtoVariable {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
-                    id: self.comm_ids.get("predicted_grab_pos"),
+                    id: self.comm_ids.get("approximate_pos"),
                     data_type: variable_description::DataType::Int64 as i32,
                     dimensions: vec![4],
                     opcode_string_handle: "vec4".to_string(),
                 }),
-                data: object.predicted_grab_pos.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                data: object.approximate_pos.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {

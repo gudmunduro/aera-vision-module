@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     setup_logging();
 
     log::info!("Connecting to AERA");
-    let mut aera = AeraConn::connect("192.168.72.143")?;
+    let mut aera = AeraConn::connect("127.0.0.1")?;
     let mut properties = Properties::new();
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
@@ -41,13 +41,20 @@ fn main() -> anyhow::Result<()> {
         // Get data from camera
         let frame = pixy.get_frame()?;
         let objects = vision.process_frame(&frame)?;
-        let mut cam_objs = [&mut properties.co1, &mut properties.co2, &mut properties.co3];
+        let mut cam_objs = vec![&mut properties.co1, &mut properties.co2, &mut properties.co3];
+        if properties.h.holding.is_some() {
+            // Don't overwrite camera object that is being held (currently only co1)
+            cam_objs = vec![&mut properties.co2, &mut properties.co3];
+            // Approximate position of held camera object is always equal to the hand position
+            properties.co1.approximate_pos = properties.h.position;
+        }
         cam_objs.iter_mut().for_each(|c| c.set_default());
         for i in 0..objects.len().min(3) {
             let area = &objects[i].area;
 
             cam_objs[i].class = objects[i].class;
             cam_objs[i].position = (area.min + (area.max - area.min)).cast();
+            log::debug!("Sending CO pos ({}, {})", cam_objs[i].position.x, cam_objs[i].position.y);
         }
 
         // Get data from robot
@@ -57,20 +64,25 @@ fn main() -> anyhow::Result<()> {
         if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() == 0 {
             properties.h.holding = Some("co1".to_string());
         }
-        for co in cam_objs {
-            co.predicted_grab_pos = calculate_predicted_grab_pos(&properties.h.position, &co.position);
+        for co in cam_objs.iter_mut().filter(|co| co.class != -1) {
+            co.approximate_pos = calculate_predicted_grab_pos(&properties.h.position, &co.position);
+            log::debug!("Sending approximate cube pos ({}, {}, {}, {})", co.approximate_pos.x, co.approximate_pos.y, co.approximate_pos.z, co.approximate_pos.w);
         }
         drop(feedback_data);
 
         // Send to AERA
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
         log::debug!("Hand holding: {:?}", properties.h.holding);
-        aera.send_properties(&properties, Some(&Command::Move(10, 10, 10, 10)))?;
+        aera.send_properties(&properties, None)?;
         
         // Handle command from AERA
         log::debug!("Listening for command");
         let cmd = match aera.listen_for_command() {
-            Ok(cmd) => cmd,
+            Ok(Some(cmd)) => cmd,
+            Ok(None) => {
+                log::error!("Timed out waiting for command from AERA");
+                continue;
+            }
             Err(e) => {
                 log::error!("Error receiving command from AERA: {e}");
                 continue;
@@ -120,10 +132,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn calculate_predicted_grab_pos(hand_pos: &Vector4<i64>, co_pos: &Vector2<i64>) -> Vector4<i64> {
-    const CAM_GRAB_POS: Vector2<i64> = Vector2::new(148, 171);
+    const CAM_GRAB_POS: Vector2<i64> = Vector2::new(162, 191);
     let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y);
     let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) as f64 / 1.175) as i64;
-    let pred_z = 0_i64;
+    let pred_z = -140_i64;
     let pred_w = 45_i64;
 
     Vector4::new(pred_x, pred_y, pred_z, pred_w)
