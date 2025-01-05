@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.91"
 cxx = "1.0"
-opencv = "0.93.3"
+opencv = { version = "0.93.3", features = ["clang-runtime"]}
 
 [build-dependencies]
 cxx-build = "1.0"

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-opencv = "0.93.3"
+opencv = { version = "0.93.3", features = ["clang-runtime"]}
 vision = { path = "../vision" }
 pixy2 = { path = "../pixy2" }
 aera = { path = "../aera" }
