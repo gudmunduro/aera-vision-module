@@ -13,8 +13,8 @@ pub struct RobotConn {
 impl RobotConn {
 
     pub fn connect() -> anyhow::Result<RobotConn> {
-        let dasboard_conn = TcpStream::connect("192.168.1.6:29999")?;
-        let motion_conn = TcpStream::connect("192.168.1.6:30003")?;
+        let dasboard_conn = TcpStream::connect("192.168.2.6:29999")?;
+        let motion_conn = TcpStream::connect("192.168.2.6:30003")?;
 
         Ok(RobotConn {
             dashboard_cmd_stream: dasboard_conn,
@@ -54,7 +54,7 @@ pub struct RobotFeedbackConn {
 
 impl RobotFeedbackConn {
     pub fn connect() -> anyhow::Result<RobotFeedbackConn> {
-        let feedback_conn = TcpStream::connect("192.168.1.6:30004")?;
+        let feedback_conn = TcpStream::connect("192.168.2.6:30004")?;
         Ok(RobotFeedbackConn { feedback_conn })
     }
 

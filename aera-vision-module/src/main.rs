@@ -11,17 +11,33 @@ use vision::{RecognizedArea, VisionSystem};
 fn main() -> anyhow::Result<()> {
     setup_logging();
 
+    log::info!("Connecting to robot");
+    let mut robot = RobotConn::connect().expect("Failed to connect to robot");
+
+    loop {
+        match run_main_loop(&mut robot) {
+            Ok(_) => break,
+            Err(e) => {
+                log::error!("Error occurred in main loop {e:?}");
+                log::debug!("Trying to reconnect");
+                continue
+            },
+        }
+    }
+
+    Ok(())
+}
+
+fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
+    let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
+    let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
+
     log::info!("Connecting to AERA");
-    let mut aera = AeraConn::connect("127.0.0.1")?;
+    let mut aera = AeraConn::connect("192.168.1.44")?;
     let mut properties = Properties::new();
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
-    log::info!("Connecting to robot");
-    let mut robot = RobotConn::connect().expect("Failed to connect to robot");
-    let mut robot_feedback = RobotFeedbackConn::connect().expect("Failed to connect to robot feedback");
-    let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
-    
     log::info!("Connecting to pixy");
     let pixy = PixyCamera::init()?;
     let mut vision = VisionSystem::new();
@@ -41,6 +57,7 @@ fn main() -> anyhow::Result<()> {
         // Get data from camera
         let frame = pixy.get_frame()?;
         let objects = vision.process_frame(&frame)?;
+        println!("Recognized {}", objects.len());
         let mut cam_objs = vec![&mut properties.co1, &mut properties.co2, &mut properties.co3];
         if properties.h.holding.is_some() {
             // Don't overwrite camera object that is being held (currently only co1)
@@ -60,7 +77,7 @@ fn main() -> anyhow::Result<()> {
         // Get data from robot
         let feedback_data = feedback_data.lock().unwrap();
         let [x, y, z, r, ..] = feedback_data.tool_vector_actual;
-        properties.h.position = Vector4::new(x.round() as i64, y.round() as i64, z.round() as i64, r.round() as i64);
+        properties.h.position = Vector4::new(x, y, z, r);
         if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() == 0 {
             properties.h.holding = Some("co1".to_string());
         }
@@ -74,7 +91,7 @@ fn main() -> anyhow::Result<()> {
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
         log::debug!("Hand holding: {:?}", properties.h.holding);
         aera.send_properties(&properties, None)?;
-        
+
         // Handle command from AERA
         log::debug!("Listening for command");
         let cmd = match aera.listen_for_command() {
@@ -100,18 +117,18 @@ fn main() -> anyhow::Result<()> {
             Command::Move(x, y, z, r) => {
                 log::debug!("Got move (relative) command from AERA by {x}, {y}, {z}, {r}");
                 let pos = &properties.h.position;
-                log_err(|| robot.mov_j((pos.x + x) as f64, (pos.y + y) as f64, (pos.z + z) as f64, (pos.w + r) as f64));
+                log_err(|| robot.mov_j(pos.x + x, pos.y + y, pos.z + z, pos.w + r));
             }
             Command::Grab => {
                 log::debug!("Got grab command from AERA");
                 log_err(|| -> anyhow::Result<()> {
-                    let pos = properties.h.position + Vector4::new(0, 0, -137, 0);
-                    robot.mov_j(pos.x as f64, pos.y as f64, pos.z as f64, pos.w as f64)?;
+                    let pos = properties.h.position + Vector4::new(0.0, 0.0, -137.0, 0.0);
+                    robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
                     sleep(Duration::from_secs(1));
                     robot.set_do(3, true)?;
                     sleep(Duration::from_secs(1));
                     let orig_pos = &properties.h.position;
-                    robot.mov_j(orig_pos.x as f64, orig_pos.y as f64, orig_pos.z as f64, orig_pos.w as f64)?;
+                    robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
 
                     Ok(())
                 });
@@ -129,14 +146,16 @@ fn main() -> anyhow::Result<()> {
 
         aera.increase_timestamp();
     }
+
+    Ok(())
 }
 
-fn calculate_predicted_grab_pos(hand_pos: &Vector4<i64>, co_pos: &Vector2<i64>) -> Vector4<i64> {
+fn calculate_predicted_grab_pos(hand_pos: &Vector4<f64>, co_pos: &Vector2<i64>) -> Vector4<f64> {
     const CAM_GRAB_POS: Vector2<i64> = Vector2::new(162, 191);
-    let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y);
-    let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) as f64 / 1.175) as i64;
-    let pred_z = -140_i64;
-    let pred_w = 45_i64;
+    let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y) as f64;
+    let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) as f64 / 1.175);
+    let pred_z = -140_f64;
+    let pred_w = 45_f64;
 
     Vector4::new(pred_x, pred_y, pred_z, pred_w)
 }

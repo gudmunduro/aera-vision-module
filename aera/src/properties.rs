@@ -22,7 +22,7 @@ impl Properties {
 #[derive(Debug, Clone)]
 pub struct CameraObject {
     pub position: Vector2<i64>,
-    pub approximate_pos: Vector4<i64>,
+    pub approximate_pos: Vector4<f64>,
     pub class: i64,
     pub size: i64
 }
@@ -31,7 +31,7 @@ impl CameraObject {
     pub fn new() -> CameraObject {
         CameraObject {
             position: Vector2::new(-1, -1),
-            approximate_pos: Vector4::new(-1, -1, -1, -1),
+            approximate_pos: Vector4::new(-1.0, -1.0, -1.0, -1.0),
             class: -1,
             size: -1
         }
@@ -46,14 +46,14 @@ impl CameraObject {
 
 #[derive(Debug, Clone)]
 pub struct HandObject {
-    pub position: Vector4<i64>,
+    pub position: Vector4<f64>,
     pub holding: Option<String>
 }
 
 impl HandObject {
     pub fn new() -> HandObject {
         HandObject {
-            position: Vector4::new(0, 0, 0, 0),
+            position: Vector4::new(0.0, 0.0, 0.0, 0.0),
             holding: None
         }
     }
