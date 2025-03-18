@@ -6,7 +6,7 @@ use opencv::{
         bounding_rect, canny_def, cvt_color, find_contours_def, gaussian_blur_def,CHAIN_APPROX_SIMPLE, COLOR_BGR2HSV, RETR_EXTERNAL
     },
 };
-
+use opencv::core::AlgorithmHint;
 use super::proposal_area::ProposalArea;
 
 pub fn make_proposals(orig_image_a: &Mat) -> anyhow::Result<Vec<ProposalArea>> {
@@ -14,7 +14,7 @@ pub fn make_proposals(orig_image_a: &Mat) -> anyhow::Result<Vec<ProposalArea>> {
     gaussian_blur_def(&orig_image_a, &mut img_blur, (5, 5).into(), 0.0)?;
 
     let mut img_hsv = Mat::default();
-    cvt_color(&img_blur, &mut img_hsv, COLOR_BGR2HSV, 0)?;
+    cvt_color(&img_blur, &mut img_hsv, COLOR_BGR2HSV, 0, AlgorithmHint::ALGO_HINT_DEFAULT)?;
 
     let mut masked_blue = Mat::default();
     // Blue

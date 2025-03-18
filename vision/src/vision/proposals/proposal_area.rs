@@ -26,13 +26,15 @@ impl ProposalArea {
 
 pub struct RecognizedArea {
     pub class: i64,
+    pub color: i64,
     pub area: ProposalArea,
 }
 
 impl RecognizedArea {
-    pub fn new(class: i64, area: ProposalArea) -> Self {
+    pub fn new(class: i64, color: i64, area: ProposalArea) -> Self {
         Self {
             class,
+            color,
             area
         }
     }

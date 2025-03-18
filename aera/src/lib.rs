@@ -1,5 +1,4 @@
 use std::{collections::HashMap, io::{Read as _, Write}, net::TcpStream};
-use std::time::Duration;
 use anyhow::{anyhow, bail};
 use commands::Command;
 use properties::{CameraObject, HandObject, Properties};
@@ -15,7 +14,9 @@ pub mod protobuf {
 pub mod properties;
 pub mod commands;
 
-pub const CAMERA_POS_UNCERTAINTY: f64 = 0.1;
+pub const CAMERA_POS_UNCERTAINTY: f64 = 5.0;
+pub const HAND_POS_UNCERTAINTY: f64 = 0.1;
+pub const CAM_OBJ_COUNT: usize = 3;
 
 pub struct AeraConn {
     stream: TcpStream,
@@ -25,10 +26,11 @@ pub struct AeraConn {
 }
 
 impl AeraConn {
-    pub fn connect(aera_ip: &str) -> anyhow::Result<AeraConn> {
+    pub fn connect(aera_ip: &str, entity_ids: &[&str]) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
         //stream.set_read_timeout(Some(Duration::from_secs(200)))?;
-        let comm_ids = CommIds::from_list(&["h", "c", "co1", "co2", "co3", "position", "holding", "size", "obj_type", "mov_j", "move", "enable_robot", "grab", "release", "approximate_pos"]);
+        let static_comm_id_names = ["h", "c", "position", "holding", "size", "obj_type", "color", "mov_j", "move", "enable_robot", "grab", "release", "approximate_pos"];
+        let comm_ids = CommIds::from_list(&[&static_comm_id_names, entity_ids].concat());
 
         let commands = [
             CommandDescription {
@@ -89,7 +91,7 @@ impl AeraConn {
             .collect();
 
         let mut aera_conn = AeraConn { stream, comm_ids, timestamp: 0, commands };
-        aera_conn.send_setup_command()?;
+        aera_conn.send_setup_command(entity_ids)?;
 
         Ok(aera_conn)
     }
@@ -103,22 +105,23 @@ impl AeraConn {
         Ok(())
     }
 
-    fn send_setup_command(&mut self) -> anyhow::Result<()> {
+    fn send_setup_command(&mut self, entity_ids: &[&str]) -> anyhow::Result<()> {
         let message = TcpMessage {
             message_type: tcp_message::Type::Setup as i32,
             message: Some(tcp_message::Message::SetupMessage(protobuf::SetupMessage {
-                entities: HashMap::from([
+                entities: [
                     ("h".to_string(), self.comm_ids.get("h")),
-                    ("c".to_string(), self.comm_ids.get("c")),
-                    ("co1".to_string(), self.comm_ids.get("co1")),
-                    ("co2".to_string(), self.comm_ids.get("co2")),
-                    ("co3".to_string(), self.comm_ids.get("co3")),
-                ]),
+                    ("c".to_string(), self.comm_ids.get("c"))
+                ]
+                    .into_iter()
+                    .chain(entity_ids.iter().map(|e| ((*e).to_owned(), self.comm_ids.get(*e))))
+                    .collect::<HashMap<_, _>>(),
                 objects: HashMap::from([
                     ("position".to_string(), self.comm_ids.get("position")),
                     ("holding".to_string(), self.comm_ids.get("holding")),
                     ("size".to_string(), self.comm_ids.get("size")),
                     ("obj_type".to_string(), self.comm_ids.get("obj_type")),
+                    ("color".to_string(), self.comm_ids.get("color")),
                     ("approximate_pos".to_string(), self.comm_ids.get("approximate_pos")),
                 ]),
                 commands: HashMap::from([
@@ -153,9 +156,7 @@ impl AeraConn {
             message_type: tcp_message::Type::Data as i32,
             message: Some(tcp_message::Message::DataMessage(protobuf::DataMessage {
                 variables: [
-                    self.camera_object_properties("co1", &properties.co1),
-                    self.camera_object_properties("co2", &properties.co2),
-                    self.camera_object_properties("co3", &properties.co3),
+                    self.camera_objects(&properties.cam_objs),
                     self.hand_object_properties("h", &properties.h),
                     command.map(|c| vec![self.command_proprty(c)]).unwrap_or_else(Vec::new)
                 ].into_iter().flatten().collect(),
@@ -167,6 +168,12 @@ impl AeraConn {
 
         Ok(())
     }
+
+    fn camera_objects(&self, objects: &HashMap<String, CameraObject>) -> Vec<ProtoVariable> {
+        objects.iter()
+            .flat_map(|(name, object)| self.camera_object_properties(name, object))
+            .collect()
+    }
     
     fn camera_object_properties(&self, name: &str, object: &CameraObject) -> Vec<ProtoVariable> {
         vec![
@@ -174,13 +181,13 @@ impl AeraConn {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
                     id: self.comm_ids.get("position"),
-                    data_type: variable_description::DataType::Int64 as i32,
+                    data_type: variable_description::DataType::UncertainDouble as i32,
                     dimensions: vec![2],
                     opcode_string_handle: "vec2".to_string(),
                 }),
-                data: object.position.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                data: object.position.iter().flat_map(|v| [v.to_le_bytes(), CAMERA_POS_UNCERTAINTY.to_le_bytes()].as_flattened().to_owned()).collect(),
             },
-            ProtoVariable {
+            /*ProtoVariable {
                 meta_data: Some(VariableDescription {
                     entity_id: self.comm_ids.get(name),
                     id: self.comm_ids.get("approximate_pos"),
@@ -189,6 +196,16 @@ impl AeraConn {
                     opcode_string_handle: "vec4".to_string(),
                 }),
                 data: object.approximate_pos.iter().flat_map(|v| [v.to_le_bytes(), CAMERA_POS_UNCERTAINTY.to_le_bytes()].as_flattened().to_owned()).collect(),
+            },*/
+            ProtoVariable {
+                meta_data: Some(VariableDescription {
+                    entity_id: self.comm_ids.get(name),
+                    id: self.comm_ids.get("color"),
+                    data_type: variable_description::DataType::Int64 as i32,
+                    dimensions: vec![1],
+                    opcode_string_handle: "set".to_string(),
+                }),
+                data: object.color.to_le_bytes().to_vec(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {
@@ -213,7 +230,7 @@ impl AeraConn {
                     dimensions: vec![4],
                     opcode_string_handle: "vec4".to_string(),
                 }),
-                data: object.position.iter().flat_map(|v| [v.to_le_bytes(), CAMERA_POS_UNCERTAINTY.to_le_bytes()].as_flattened().to_owned()).collect(),
+                data: object.position.iter().flat_map(|v| [v.to_le_bytes(), HAND_POS_UNCERTAINTY.to_le_bytes()].as_flattened().to_owned()).collect(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {
@@ -310,12 +327,17 @@ impl AeraConn {
                 le_bytes_to_i64(&command_var.data[16..24]),
                 le_bytes_to_i64(&command_var.data[24..32]),
             ),
-            "move" => Command::Move(
-                le_bytes_to_f64(&command_var.data[0..8]),
-                le_bytes_to_f64(&command_var.data[8..16]),
-                le_bytes_to_f64(&command_var.data[16..24]),
-                le_bytes_to_f64(&command_var.data[24..32]),
-            ),
+            "move" => {
+                if command_var.data.len() < 32 {
+                    return Ok(None);
+                }
+                Command::Move(
+                    le_bytes_to_f64(&command_var.data[0..8]),
+                    le_bytes_to_f64(&command_var.data[8..16]),
+                    le_bytes_to_f64(&command_var.data[16..24]),
+                    le_bytes_to_f64(&command_var.data[24..32]),
+                )
+            },
             "grab" => Command::Grab,
             "release" => Command::Release,
             "enable_robot" => Command::EnableRobot,

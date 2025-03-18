@@ -8,6 +8,7 @@ use nn::create_nn;
 pub mod nn;
 pub mod clip;
 pub mod utils;
+pub mod color_category;
 
 const CLASSIFIER_SIM_THRESHOLD: f32 = 0.65;
 
@@ -60,7 +61,6 @@ impl Classifier {
             })
             .max_by(|(_, sim_x), (_, sim_y)| sim_x.partial_cmp(sim_y).unwrap())?;
 
-        log::debug!("Similairity score during classification: {sim}");
         if sim > CLASSIFIER_SIM_THRESHOLD {
             Some((class, sim))
         } else {

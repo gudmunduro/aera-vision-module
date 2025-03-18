@@ -9,5 +9,5 @@ pub enum Command {
     // Release what the robot is holding
     Release,
     // Enable the robot
-    EnableRobot
+    EnableRobot,
 }

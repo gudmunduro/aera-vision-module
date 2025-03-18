@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, thread::sleep, time::Duration};
 
-use aera::{commands::Command, properties::Properties, AeraConn};
+use aera::{commands::Command, properties::Properties, AeraConn, CAM_OBJ_COUNT};
 use nalgebra::{Vector2, Vector4};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use simulated_cube::SimCube;
@@ -11,8 +11,8 @@ fn main() -> anyhow::Result<()> {
     setup_logging();
 
     log::info!("Connecting to AERA");
-    let mut aera = AeraConn::connect("127.0.0.1")?;
-    let mut properties = Properties::new();
+    let mut properties = Properties::new(CAM_OBJ_COUNT);
+    let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.keys().map(|id| id.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
@@ -27,27 +27,38 @@ fn main() -> anyhow::Result<()> {
 
         let cmd_to_send = forced_commands.pop_front();
         if sim_cube.visible {
-            properties.co1.position = sim_cube.pos;
-            properties.co1.approximate_pos = sim_cube.approximte_pos;
-            properties.co1.class = 0;
+            let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+            co1.position = sim_cube.pos;
+            co1.approximate_pos = sim_cube.approximte_pos;
+            co1.class = 0;
+            co1.color = 2;
         }
         else {
-            properties.co1.position = Vector2::new(-1, -1);
+            let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+            co1.position = Vector2::new(-1.0, -1.0);
             if properties.h.holding.is_some() {
-                properties.co1.approximate_pos = properties.h.position;
-                properties.co1.class = 0;
+                co1.approximate_pos = properties.h.position;
+                co1.class = 0;
+                co1.color = 2;
             }
             else {
-                properties.co1.approximate_pos = Vector4::new(-1.0, -1.0, -1.0, -1.0);
-                properties.co1.class = -1;
+                co1.approximate_pos = Vector4::new(-1.0, -1.0, -1.0, -1.0);
+                co1.class = -1;
+                co1.color = -1;
             }
         }
 
-        log::debug!("Holding {}", properties.h.holding.clone().unwrap_or("Nothing".to_owned()));
-        let hp = properties.h.position;
-        log::debug!("Hand position ({}, {}, {}, {})", hp.x, hp.y, hp.z, hp.w);
-        let ap = properties.co1.approximate_pos;
-        log::debug!("Cam obj (co1) pos: ({}, {}, {}, {})", ap.x, ap.y, ap.z, ap.w);
+        {
+            let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+
+            log::debug!("Holding {}", properties.h.holding.clone().unwrap_or("Nothing".to_owned()));
+            let hp = properties.h.position;
+            log::debug!("Hand position ({}, {}, {}, {})", hp.x, hp.y, hp.z, hp.w);
+            let ap = co1.approximate_pos;
+            log::debug!("Cam obj (co1) pos: ({}, {}, {}, {})", ap.x, ap.y, ap.z, ap.w);
+            let cp = co1.position;
+            log::debug!("Cam obj (co1) cam pos: ({}, {})", cp.x, cp.y);
+        }
 
         log::debug!("Sending properties");
         aera.send_properties(&properties, cmd_to_send.as_ref())?;
@@ -71,16 +82,16 @@ fn main() -> anyhow::Result<()> {
         };
         match cmd {
             Command::EnableRobot => {
-                log::debug!("Got enable_robot command from AERA");
+                log::info!("Got enable_robot command from AERA");
             }
             Command::MovJ(x, y, z, r) => {
-                log::debug!("Got movj command from AERA to {x}, {y}, {z}, {r}");
+                log::info!("Got movj command from AERA to {x}, {y}, {z}, {r}");
                 let old_pos = properties.h.position;
                 properties.h.position = Vector4::new(x as f64, y as f64, z as f64, r as f64);
                 sim_cube.move_hand(&(properties.h.position - old_pos), &properties.h.position);
             }
             Command::Move(x, y, z, r) => {
-                log::debug!("Got move (relative) command from AERA by {x}, {y}, {z}, {r}");
+                log::info!("Got move (relative) command from AERA by {x}, {y}, {z}, {r}");
                 let (x, y, z, r) = (x + random_noise(), y + random_noise(), z + random_noise(), r + random_noise());
                 log::debug!("Moving by {x}, {y}, {z}, {r}");
                 let current_pos = properties.h.position;
@@ -88,14 +99,16 @@ fn main() -> anyhow::Result<()> {
                 sim_cube.move_hand(&Vector4::new(x, y, z, r), &properties.h.position);
             }
             Command::Grab => {
-                log::debug!("Got grab command from AERA");
+                log::info!("Got grab command from AERA");
                 properties.h.holding = Some("co1".to_string());
                 sim_cube.visible = false;
             }
             Command::Release => {
-                log::debug!("Got release command from AERA");
+                log::info!("Got release command from AERA");
+                let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+
                 properties.h.holding = None;
-                properties.co1.approximate_pos.z = -140.0;
+                co1.approximate_pos.z = -140.0;
                 sim_cube.visible = true;
             }
         }
@@ -105,11 +118,12 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn set_initial_state(properties: &mut Properties, sim_cube: &mut SimCube) {
-    properties.h.position = Vector4::new(240.0, 0.0, 0.0, 45.0);
+    properties.h.position = Vector4::new(200.0, 200.0, 0.0, 45.0);
 
-    properties.co1.position = sim_cube.pos;
-    properties.co1.class = 0;
-    properties.co1.size = 1;
+    let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+    co1.position = sim_cube.pos;
+    co1.class = 0;
+    co1.size = 1;
 
     sim_cube.move_hand(&Vector4::new(0.0, 0.0, 0.0, 0.0), &properties.h.position);
 }
