@@ -111,6 +111,9 @@ fn main() -> anyhow::Result<()> {
                 co1.approximate_pos.z = -140.0;
                 sim_cube.visible = true;
             }
+            Command::NoAction => {
+                log::info!("Got no action command from AERA");
+            }
         }
 
         aera.increase_timestamp();

@@ -29,7 +29,7 @@ impl AeraConn {
     pub fn connect(aera_ip: &str, entity_ids: &[&str]) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
         //stream.set_read_timeout(Some(Duration::from_secs(200)))?;
-        let static_comm_id_names = ["h", "c", "position", "holding", "size", "obj_type", "color", "mov_j", "move", "enable_robot", "grab", "release", "approximate_pos"];
+        let static_comm_id_names = ["h", "c", "position", "holding", "size", "obj_type", "color", "mov_j", "move", "enable_robot", "grab", "release", "no_action", "approximate_pos", "sys"];
         let comm_ids = CommIds::from_list(&[&static_comm_id_names, entity_ids].concat());
 
         let commands = [
@@ -85,6 +85,16 @@ impl AeraConn {
                 }),
                 name: "enable_robot".to_string(),
             },
+            CommandDescription {
+                description: Some(VariableDescription {
+                    entity_id: comm_ids.get("sys"),
+                    id: comm_ids.get("no_action"),
+                    data_type: variable_description::DataType::CommunicationId as i32,
+                    dimensions: vec![0],
+                    opcode_string_handle: String::new(),
+                }),
+                name: "no_action".to_string(),
+            },
         ]
             .into_iter()
             .map(|c| (c.name.clone(), c))
@@ -111,7 +121,8 @@ impl AeraConn {
             message: Some(tcp_message::Message::SetupMessage(protobuf::SetupMessage {
                 entities: [
                     ("h".to_string(), self.comm_ids.get("h")),
-                    ("c".to_string(), self.comm_ids.get("c"))
+                    ("c".to_string(), self.comm_ids.get("c")),
+                    ("sys".to_string(), self.comm_ids.get("sys")),
                 ]
                     .into_iter()
                     .chain(entity_ids.iter().map(|e| ((*e).to_owned(), self.comm_ids.get(*e))))
@@ -129,7 +140,8 @@ impl AeraConn {
                     ("move".to_string(), self.comm_ids.get("move")),
                     ("grab".to_string(), self.comm_ids.get("grab")),
                     ("release".to_string(), self.comm_ids.get("release")),
-                    ("enable_robot".to_string(), self.comm_ids.get("enable_robot"))
+                    ("enable_robot".to_string(), self.comm_ids.get("enable_robot")),
+                    ("no_action".to_string(), self.comm_ids.get("no_action")),
                 ]),
                 command_descriptions: self.commands.values().cloned().collect(),
             })),
@@ -267,6 +279,10 @@ impl AeraConn {
                 meta_data: self.commands["enable_robot"].description.clone(),
                 data: Vec::new()
             },
+            Command::NoAction => ProtoVariable {
+                meta_data: self.commands["no_action"].description.clone(),
+                data: Vec::new()
+            }
         }
     }
 
@@ -341,6 +357,7 @@ impl AeraConn {
             "grab" => Command::Grab,
             "release" => Command::Release,
             "enable_robot" => Command::EnableRobot,
+            "no_action" => Command::NoAction,
             _ => bail!("Unhandled cmd with id {}", meta.id)
         };
 

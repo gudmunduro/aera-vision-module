@@ -18,7 +18,7 @@ pub fn get_color_of_proposal(img: &Mat, proposal: &ProposalArea) -> anyhow::Resu
     let mut masked = Mat::default();
     in_range(
         &proposal_img,
-        &[100, 100, 50],
+        &[100, 70, 15],
         &[140, 255, 255],
         &mut masked,
     )?;
@@ -54,25 +54,25 @@ pub fn get_color_of_proposal(img: &Mat, proposal: &ProposalArea) -> anyhow::Resu
     // Green
     in_range(
         &proposal_img,
-        &[40, 100, 100],
-        &[67, 255, 255],
+        &[40, 35, 13],
+        &[79, 255, 255],
         &mut masked,
     )?;
     let green_ratio = count_non_zero(&masked)? as f32 / proposal_img.total() as f32;
 
-    let category = if blue_ratio > 0.6 {
+    let category = if blue_ratio > 0.4 {
         log::debug!("Saw blue object {blue_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         1
     }
-    else if red_ratio > 0.6 {
+    else if red_ratio > 0.4 {
         log::debug!("Saw red object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         2
     }
-    else if yellow_ratio > 0.6 {
+    else if yellow_ratio > 0.4 {
         log::debug!("Saw yellow object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         3
     }
-    else if green_ratio > 0.6 {
+    else if green_ratio > 0.4 {
         log::debug!("Saw green object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         4
     }

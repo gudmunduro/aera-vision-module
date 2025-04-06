@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
             Err(e) => {
                 log::error!("Error occurred in main loop {e:?}");
                 log::debug!("Trying to reconnect");
+                thread::sleep(Duration::from_secs(5));
                 continue
             },
         }
@@ -62,10 +63,10 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
         let feedback_data = feedback_data.lock().unwrap();
         let [x, y, z, r, ..] = feedback_data.tool_vector_actual;
         properties.h.position = Vector4::new(x, y, z, r);
-        if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() < properties.cam_objs.values().filter(|co| co.class != -1).count() {
+        //if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() < properties.cam_objs.values().filter(|co| co.class != -1).count() {
             // Say we are holding the object that was closest to center in last frame
-            properties.h.holding = Some(get_object_closest_to_center(&properties));
-        }
+        //    properties.h.holding = Some(get_object_closest_to_center(&properties));
+        //}
         drop(feedback_data);
 
         // Update based on data from camera
@@ -81,7 +82,7 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
 
             cam_obj.class = 0;
             cam_obj.color = object.color;
-            cam_obj.position = (area.min + (area.max - area.min)).cast();
+            cam_obj.position = (area.min + (area.max - area.min) / 2).cast();
             log::debug!("Sending {co_key} pos ({}, {})", cam_obj.position.x, cam_obj.position.y);
         }
 
@@ -122,13 +123,18 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
                 log::info!("Got grab command from AERA");
                 //ask_to_continue();
                 log_err(|| -> anyhow::Result<()> {
-                    let pos = properties.h.position + Vector4::new(0.0, 0.0, -137.0, 0.0);
+                    let pos = properties.h.position + Vector4::new(0.0, 0.0, -106.0, 0.0);
+                    robot.set_do(3, true)?;
+                    sleep(Duration::from_secs(2));
                     robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
                     sleep(Duration::from_secs(1));
-                    robot.set_do(3, true)?;
+                    robot.set_do(3, false)?;
+                    sleep(Duration::from_secs(3));
+                    robot.set_do(1, true)?;
                     sleep(Duration::from_secs(3));
                     let orig_pos = &properties.h.position;
                     robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
+                    properties.h.holding = Some(get_object_closest_to_center(&properties));
 
                     Ok(())
                 });
@@ -136,11 +142,16 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
             Command::Release => {
                 log::info!("Got release command from AERA");
                 log_err(|| -> anyhow::Result<()> {
-                    robot.set_do(3, false)?;
+                    robot.set_do(1, false)?;
+                    sleep(Duration::from_secs(1));
+                    robot.set_do(3, true)?;
                     properties.h.holding = None;
 
                     Ok(())
                 });
+            },
+            Command::NoAction => {
+                log::info!("Got no action command from AERA");
             }
         }
 
@@ -161,7 +172,7 @@ fn calculate_predicted_grab_pos(hand_pos: &Vector4<f64>, co_pos: &Vector2<f64>) 
 }
 
 fn get_object_closest_to_center(properties: &Properties) -> String {
-    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(162.0, 191.0);
+    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(145.0, 173.0);
 
     properties.cam_objs.iter()
         .filter(|(_, co)| co.class != -1)

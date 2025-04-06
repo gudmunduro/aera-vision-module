@@ -10,4 +10,5 @@ pub enum Command {
     Release,
     // Enable the robot
     EnableRobot,
+    NoAction,
 }
