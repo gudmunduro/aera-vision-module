@@ -7,6 +7,7 @@ use protobuf::{
     tcp_message, variable_description, CommandDescription, ProtoVariable, TcpMessage,
     VariableDescription,
 };
+use crate::properties::AeraSiftKeyPoint;
 
 pub mod protobuf {
     include!(concat!(env!("OUT_DIR"), "/tcp_io_device.rs"));
@@ -17,6 +18,7 @@ pub mod commands;
 pub const CAMERA_POS_UNCERTAINTY: f64 = 5.0;
 pub const HAND_POS_UNCERTAINTY: f64 = 0.1;
 pub const CAM_OBJ_COUNT: usize = 3;
+pub const MAX_SIFT_POINT_COUNT: usize = 30;
 
 pub struct AeraConn {
     stream: TcpStream,
@@ -29,7 +31,7 @@ impl AeraConn {
     pub fn connect(aera_ip: &str, entity_ids: &[&str]) -> anyhow::Result<AeraConn> {
         let stream = TcpStream::connect(format!("{aera_ip}:8080"))?;
         //stream.set_read_timeout(Some(Duration::from_secs(200)))?;
-        let static_comm_id_names = ["h", "c", "position", "holding", "size", "obj_type", "color", "mov_j", "move", "enable_robot", "grab", "release", "no_action", "approximate_pos", "sys"];
+        let static_comm_id_names = ["h", "c", "position", "holding", "size", "obj_type", "color", "mov_j", "move", "enable_robot", "grab", "release", "no_action", "approximate_pos", "sys", "features"];
         let comm_ids = CommIds::from_list(&[&static_comm_id_names, entity_ids].concat());
 
         let commands = [
@@ -134,6 +136,7 @@ impl AeraConn {
                     ("obj_type".to_string(), self.comm_ids.get("obj_type")),
                     ("color".to_string(), self.comm_ids.get("color")),
                     ("approximate_pos".to_string(), self.comm_ids.get("approximate_pos")),
+                    ("features".to_string(), self.comm_ids.get("features")),
                 ]),
                 commands: HashMap::from([
                     ("mov_j".to_string(), self.comm_ids.get("mov_j")),
@@ -168,7 +171,8 @@ impl AeraConn {
             message_type: tcp_message::Type::Data as i32,
             message: Some(tcp_message::Message::DataMessage(protobuf::DataMessage {
                 variables: [
-                    self.camera_objects(&properties.cam_objs),
+                    // self.camera_objects(&properties.cam_objs),
+                    self.sift_keypoints(&properties.sift_keypoints),
                     self.hand_object_properties("h", &properties.h),
                     command.map(|c| vec![self.command_proprty(c)]).unwrap_or_else(Vec::new)
                 ].into_iter().flatten().collect(),
@@ -253,6 +257,39 @@ impl AeraConn {
                     opcode_string_handle: "set".to_string(),
                 }),
                 data: object.holding.as_ref().map(|o|self.comm_ids.get(o) as i64).unwrap_or(-1).to_le_bytes().to_vec(),
+            },
+        ]
+    }
+
+    fn sift_keypoints(&self, keypoints: &Vec<AeraSiftKeyPoint>) -> Vec<ProtoVariable> {
+        keypoints
+            .iter()
+            .filter(|kp| kp.detected)
+            .flat_map(|kp| self.sift_keypoint_properties(kp))
+            .collect()
+    }
+
+    fn sift_keypoint_properties(&self, keypoint: &AeraSiftKeyPoint) -> Vec<ProtoVariable> {
+        vec![
+            ProtoVariable {
+                meta_data: Some(VariableDescription {
+                    entity_id: self.comm_ids.get(&keypoint.name),
+                    id: self.comm_ids.get("position"),
+                    data_type: variable_description::DataType::Double as i32,
+                    dimensions: vec![2],
+                    opcode_string_handle: "vec2".to_string(),
+                }),
+                data: keypoint.point.iter().flat_map(|v| [v.to_le_bytes()].as_flattened().to_owned()).collect(),
+            },
+            ProtoVariable {
+                meta_data: Some(VariableDescription {
+                    entity_id: self.comm_ids.get(&keypoint.name),
+                    id: self.comm_ids.get("features"),
+                    data_type: variable_description::DataType::Double as i32,
+                    dimensions: vec![128],
+                    opcode_string_handle: "set".to_string(),
+                }),
+                data: keypoint.feature_vec.iter().flat_map(|v| v.to_le_bytes()).collect(),
             },
         ]
     }

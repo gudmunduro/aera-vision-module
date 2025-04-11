@@ -1,6 +1,6 @@
 use std::{fmt, process::exit, sync::{Arc, Mutex}, thread::{self, sleep}, time::Duration, u64};
 use itertools::Itertools;
-use aera::{commands::Command, properties::Properties, protobuf::{tcp_message, variable_description, DataMessage, ProtoVariable, VariableDescription}, AeraConn, CAM_OBJ_COUNT};
+use aera::{commands::Command, properties::Properties, protobuf::{tcp_message, variable_description, DataMessage, ProtoVariable, VariableDescription}, AeraConn, CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT};
 use nalgebra::{distance, Vector2, Vector4};
 use opencv::imgcodecs::{self, IMREAD_COLOR};
 use pixy2::PixyCamera;
@@ -33,8 +33,8 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
 
     log::info!("Connecting to AERA");
-    let mut properties = Properties::new(CAM_OBJ_COUNT);
-    let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.keys().map(|id| id.as_str()).collect::<Vec<_>>())?;
+    let mut properties = Properties::new(CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT);
+    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_keypoints.iter().map(|kp| kp.name.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
@@ -56,26 +56,30 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
 
         // Get data from camera
         let frame = pixy.get_frame()?;
-        let objects = vision.process_frame(&frame)?.into_iter().filter(|o| o.color > 0).collect_vec();
-        println!("Recognized {}", objects.len());
+        //let objects = vision.process_frame(&frame)?.into_iter().filter(|o| o.color > 0).collect_vec();
+        let sift_keypoints = vision.process_with_sift(&frame)?;
+        println!("Recognized {} SIFT keypoints", sift_keypoints.len());
+
+        properties.sift_keypoints.iter_mut().for_each(|kp| kp.detected = false);
+        for (i, kp) in sift_keypoints.into_iter().take(30).enumerate() {
+            properties.sift_keypoints[i].detected = true;
+            properties.sift_keypoints[i].point = kp.point;
+            properties.sift_keypoints[i].feature_vec = kp.feature_vec;
+        }
 
         // Get data from robot
         let feedback_data = feedback_data.lock().unwrap();
         let [x, y, z, r, ..] = feedback_data.tool_vector_actual;
         properties.h.position = Vector4::new(x, y, z, r);
-        //if (((feedback_data.digital_outputs >> 2) & 1)) != 0 && objects.len() < properties.cam_objs.values().filter(|co| co.class != -1).count() {
-            // Say we are holding the object that was closest to center in last frame
-        //    properties.h.holding = Some(get_object_closest_to_center(&properties));
-        //}
         drop(feedback_data);
 
         // Update based on data from camera
-        let mut cam_obj_keys = properties.cam_objs.keys().cloned().sorted().collect::<Vec<_>>();
-        if let Some(co) = &properties.h.holding {
+        //let mut cam_obj_keys = properties.cam_objs.keys().cloned().sorted().collect::<Vec<_>>();
+        /*if let Some(co) = &properties.h.holding {
             // Don't overwrite camera object that is being held
             cam_obj_keys.retain(|k| k != co);
-        }
-        cam_obj_keys.iter().for_each(|c| properties.cam_objs.get_mut(c).unwrap().set_default());
+        }*/
+        /*cam_obj_keys.iter().for_each(|c| properties.cam_objs.get_mut(c).unwrap().set_default());
         for (object, co_key) in objects.iter().zip(cam_obj_keys.iter()).take(cam_obj_keys.len()) {
             let area = &object.area;
             let cam_obj = properties.cam_objs.get_mut(co_key).unwrap();
@@ -84,7 +88,9 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
             cam_obj.color = object.color;
             cam_obj.position = (area.min + (area.max - area.min) / 2).cast();
             log::debug!("Sending {co_key} pos ({}, {})", cam_obj.position.x, cam_obj.position.y);
-        }
+        }*/
+
+
 
         // Send to AERA
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
@@ -123,7 +129,7 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
                 log::info!("Got grab command from AERA");
                 //ask_to_continue();
                 log_err(|| -> anyhow::Result<()> {
-                    let pos = properties.h.position + Vector4::new(0.0, 0.0, -106.0, 0.0);
+                    let pos = properties.h.position + Vector4::new(0.0, 0.0, -110.0, 0.0);
                     robot.set_do(3, true)?;
                     sleep(Duration::from_secs(2));
                     robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
@@ -134,7 +140,7 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
                     sleep(Duration::from_secs(3));
                     let orig_pos = &properties.h.position;
                     robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
-                    properties.h.holding = Some(get_object_closest_to_center(&properties));
+                    properties.h.holding = Some(get_sift_keypoint_closest_to_center(&properties));
 
                     Ok(())
                 });
@@ -178,6 +184,17 @@ fn get_object_closest_to_center(properties: &Properties) -> String {
         .filter(|(_, co)| co.class != -1)
         .sorted_by_key(|(_, co)| ((co.position - CAM_GRAB_POS).norm() * 100.0) as i32)
         .map(|(k, _)| k.clone())
+        .next()
+        .unwrap()
+}
+
+fn get_sift_keypoint_closest_to_center(properties: &Properties) -> String {
+    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(145.0, 173.0);
+
+    properties.sift_keypoints.iter()
+        .filter(|sift| sift.detected)
+        .sorted_by_key(|sift| ((sift.point - CAM_GRAB_POS).norm() * 100.0) as i32)
+        .map(|sift| sift.name.clone())
         .next()
         .unwrap()
 }

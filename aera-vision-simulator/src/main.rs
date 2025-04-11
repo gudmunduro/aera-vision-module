@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, thread::sleep, time::Duration};
 
-use aera::{commands::Command, properties::Properties, AeraConn, CAM_OBJ_COUNT};
+use aera::{commands::Command, properties::Properties, AeraConn, CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT};
 use nalgebra::{Vector2, Vector4};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use simulated_cube::SimCube;
@@ -11,13 +11,15 @@ fn main() -> anyhow::Result<()> {
     setup_logging();
 
     log::info!("Connecting to AERA");
-    let mut properties = Properties::new(CAM_OBJ_COUNT);
-    let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.keys().map(|id| id.as_str()).collect::<Vec<_>>())?;
+    let mut properties = Properties::new(CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT);
+    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_keypoints.iter().map(|kp| kp.name.as_str()).collect::<Vec<_>>())?;
+    //let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.keys().map(|k| k.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
     let mut sim_cube = SimCube::initial();
     set_initial_state(&mut properties, &mut sim_cube);
+    set_demo_sift_points(&mut properties);
 
     let mut forced_commands = VecDeque::from([]);
 
@@ -100,19 +102,18 @@ fn main() -> anyhow::Result<()> {
             }
             Command::Grab => {
                 log::info!("Got grab command from AERA");
-                properties.h.holding = Some("co1".to_string());
+                properties.h.holding = Some("sift1".to_string());
                 sim_cube.visible = false;
             }
             Command::Release => {
                 log::info!("Got release command from AERA");
-                let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
 
                 properties.h.holding = None;
-                co1.approximate_pos.z = -140.0;
                 sim_cube.visible = true;
             }
             Command::NoAction => {
                 log::info!("Got no action command from AERA");
+                sleep(Duration::from_secs(10));
             }
         }
 
@@ -129,6 +130,20 @@ fn set_initial_state(properties: &mut Properties, sim_cube: &mut SimCube) {
     co1.size = 1;
 
     sim_cube.move_hand(&Vector4::new(0.0, 0.0, 0.0, 0.0), &properties.h.position);
+}
+
+fn set_demo_sift_points(properties: &mut Properties) {
+    properties.sift_keypoints[0].detected = true;
+    properties.sift_keypoints[0].point = Vector2::new(200.88758850097656, 268.90301513671875);
+    properties.sift_keypoints[0].feature_vec = vec![38.00, 26.00, 3.00, 1.00, 0.00, 0.00, 2.00, 6.00, 10.00, 2.00, 1.00, 1.00, 1.00, 4.00, 42.00, 32.00, 0.00, 0.00, 1.00, 7.00, 20.00, 74.00, 46.00, 6.00, 14.00, 4.00, 4.00, 6.00, 10.00, 50.00, 11.00, 3.00, 67.00, 4.00, 0.00, 0.00, 0.00, 2.00, 19.00, 30.00, 129.00, 19.00, 2.00, 2.00, 3.00, 18.00, 93.00, 129.00, 14.00, 6.00, 3.00, 17.00, 113.00, 129.00, 129.00, 45.00, 1.00, 0.00, 0.00, 5.00, 73.00, 93.00, 4.00, 0.00, 41.00, 14.00, 0.00, 1.00, 2.00, 4.00, 9.00, 5.00, 129.00, 129.00, 80.00, 15.00, 4.00, 5.00, 5.00, 29.00, 17.00, 50.00, 129.00, 129.00, 129.00, 39.00, 8.00, 9.00, 0.00, 0.00, 2.00, 92.00, 91.00, 9.00, 0.00, 0.00, 5.00, 11.00, 13.00, 5.00, 1.00, 0.00, 0.00, 0.00, 6.00, 51.00, 51.00, 11.00, 1.00, 0.00, 0.00, 0.00, 0.00, 8.00, 72.00, 83.00, 5.00, 2.00, 1.00, 0.00, 0.00, 0.00, 4.00, 49.00, 27.00, 9.00, 1.00, 0.00];
+
+    properties.sift_keypoints[1].detected = true;
+    properties.sift_keypoints[1].point = Vector2::new(327.4416809082031, 148.53501892089844);
+    properties.sift_keypoints[1].feature_vec = vec![109.00, 75.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2.00, 51.00, 30.00, 1.00, 0.00, 6.00, 20.00, 15.00, 22.00, 0.00, 0.00, 1.00, 4.00, 26.00, 81.00, 29.00, 3.00, 1.00, 4.00, 11.00, 7.00, 5.00, 10.00, 41.00, 11.00, 120.00, 33.00, 0.00, 0.00, 0.00, 0.00, 0.00, 41.00, 120.00, 41.00, 10.00, 5.00, 7.00, 26.00, 39.00, 106.00, 7.00, 7.00, 11.00, 49.00, 120.00, 117.00, 35.00, 16.00, 3.00, 19.00, 23.00, 31.00, 49.00, 4.00, 0.00, 0.00, 65.00, 5.00, 0.00, 0.00, 0.00, 18.00, 105.00, 120.00, 79.00, 104.00, 81.00, 25.00, 7.00, 36.00, 18.00, 20.00, 3.00, 19.00, 80.00, 120.00, 99.00, 18.00, 6.00, 1.00, 9.00, 5.00, 2.00, 29.00, 32.00, 3.00, 10.00, 14.00, 0.00, 0.00, 2.00, 33.00, 56.00, 120.00, 120.00, 21.00, 0.00, 2.00, 30.00, 53.00, 43.00, 106.00, 15.00, 0.00, 0.00, 5.00, 22.00, 21.00, 12.00, 44.00, 29.00, 0.00, 0.00, 1.00, 1.00, 1.00, 2.00, 15.00, 38.00, 8.00];
+
+    for i in 2..properties.sift_keypoints.len() {
+        properties.sift_keypoints[i].detected = false;
+    }
 }
 
 fn setup_logging() {

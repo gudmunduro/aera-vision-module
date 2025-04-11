@@ -12,6 +12,8 @@ use vision::{classifier::{utils::get_image_data_for_classification, Classifier},
 
 pub use vision::proposals::proposal_area::RecognizedArea;
 use crate::vision::classifier::color_category;
+use crate::vision::sift::{get_sift_points};
+pub use crate::vision::sift::SiftKeyPoint;
 
 pub struct VisionSystem {
     classifier: Classifier,
@@ -49,6 +51,15 @@ impl VisionSystem {
         //visualize_proposals(&img, &results)?;
 
         Ok(results)
+    }
+
+    pub fn process_with_sift(&mut self, img_rgb: &Mat) -> anyhow::Result<Vec<SiftKeyPoint>> {
+        let mut img = Mat::default();
+        cvt_color(&img_rgb, &mut img, COLOR_RGB2BGR, 0, AlgorithmHint::ALGO_HINT_DEFAULT)?;
+
+        let keypoints = get_sift_points(&img)?;
+
+        Ok(keypoints)
     }
 }
 
