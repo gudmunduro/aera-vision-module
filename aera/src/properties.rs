@@ -4,7 +4,7 @@ use nalgebra::{Vector2, Vector4};
 #[derive(Debug, Clone)]
 pub struct Properties {
     pub cam_objs: HashMap<String, CameraObject>,
-    pub sift_keypoints: Vec<AeraSiftKeyPoint>,
+    pub sift_clusters: Vec<AeraSiftCluster>,
     pub h: HandObject,
 }
 
@@ -12,7 +12,7 @@ impl Properties {
     pub fn new(cam_obj_count: usize, sift_keypoint_count: usize) -> Properties {
         Properties {
             cam_objs: (1..cam_obj_count+1).map(|i| (format!("co{i}"), CameraObject::new())).collect(),
-            sift_keypoints: (1..sift_keypoint_count+1).map(|i| AeraSiftKeyPoint::new(format!("sift{i}"))).collect(),
+            sift_clusters: (1..sift_keypoint_count+1).map(|i| AeraSiftCluster::new(format!("co{i}"))).collect(),
             h: HandObject::new(),
         }
     }
@@ -76,6 +76,25 @@ impl AeraSiftKeyPoint {
             detected: false,
             point: Vector2::new(-1.0, -1.0),
             feature_vec: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AeraSiftCluster {
+    pub name: String,
+    pub active: bool,
+    pub center: Vector2<f64>,
+    pub features: Vec<bool>,
+}
+
+impl AeraSiftCluster {
+    pub fn new(name: String) -> Self {
+        AeraSiftCluster {
+            name,
+            active: false,
+            center: Default::default(),
+            features: vec![],
         }
     }
 }

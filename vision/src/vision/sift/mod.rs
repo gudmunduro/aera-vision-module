@@ -15,6 +15,7 @@ pub fn get_sift_points(img: &Mat) -> anyhow::Result<Vec<SiftKeyPoint>> {
     cvt_color_def(img, &mut img_gray, COLOR_BGR2GRAY)?;
 
     let mut sift = SIFT::create_def()?;
+    sift.set_contrast_threshold(0.10)?;
     let mut keypoints = Vector::new();
     let mut descriptors = Mat::default();
     sift.detect_and_compute_def(&img_gray, &Vector::<u8>::new(), &mut keypoints, &mut descriptors)?;

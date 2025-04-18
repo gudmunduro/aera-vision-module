@@ -1,0 +1,15 @@
+[package]
+name = "sift-processing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+opencv = { version = "0.93.3", features = ["clang-runtime"]}
+linfa-clustering = "0.7.1"
+nalgebra = "0.33"
+vision = { path = "../vision" }
+ndarray = "0.15"
+itertools = "0.13.0"
+linfa = { version = "0.7.1", features = ["ndarray-linalg"] }
+linfa-datasets = { version = "0.7.1", features = ["generate"] }
+rand = "0.8.0"

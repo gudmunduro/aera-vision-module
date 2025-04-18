@@ -9,6 +9,7 @@ vision = { path = "../vision" }
 pixy2 = { path = "../pixy2" }
 aera = { path = "../aera" }
 robot = { path = "../robot" }
+sift-processing = { path = "../sift-processing" }
 anyhow = "1.0.90"
 nalgebra = "0.33.1"
 log = "0.4.22"

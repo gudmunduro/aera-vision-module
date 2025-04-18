@@ -8,6 +8,7 @@
       <sourceFolder url="file://$MODULE_DIR$/aera-vision-simulator/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/aera/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/robot/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sift-processing/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

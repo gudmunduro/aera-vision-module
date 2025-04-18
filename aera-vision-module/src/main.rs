@@ -6,6 +6,7 @@ use opencv::imgcodecs::{self, IMREAD_COLOR};
 use pixy2::PixyCamera;
 use robot::{feedback_data::{self, FeedbackData}, RobotConn, RobotFeedbackConn};
 use vision::{RecognizedArea, VisionSystem};
+use sift_processing::SiftProcessing;
 
 fn main() -> anyhow::Result<()> {
     setup_logging();
@@ -33,8 +34,9 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
 
     log::info!("Connecting to AERA");
+    let mut sift_processor = SiftProcessing::new();
     let mut properties = Properties::new(CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT);
-    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_keypoints.iter().map(|kp| kp.name.as_str()).collect::<Vec<_>>())?;
+    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_clusters.iter().map(|c| c.name.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
@@ -58,13 +60,14 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
         let frame = pixy.get_frame()?;
         //let objects = vision.process_frame(&frame)?.into_iter().filter(|o| o.color > 0).collect_vec();
         let sift_keypoints = vision.process_with_sift(&frame)?;
+        let clusters = sift_processor.get_feature_cluster(&sift_keypoints);
         println!("Recognized {} SIFT keypoints", sift_keypoints.len());
 
-        properties.sift_keypoints.iter_mut().for_each(|kp| kp.detected = false);
-        for (i, kp) in sift_keypoints.into_iter().take(30).enumerate() {
-            properties.sift_keypoints[i].detected = true;
-            properties.sift_keypoints[i].point = kp.point;
-            properties.sift_keypoints[i].feature_vec = kp.feature_vec;
+        properties.sift_clusters.iter_mut().for_each(|kp| kp.active = false);
+        for (i, c) in clusters.into_iter().take(30).enumerate() {
+            properties.sift_clusters[i].active = true;
+            properties.sift_clusters[i].center = c.center.cast();
+            properties.sift_clusters[i].features = c.features;
         }
 
         // Get data from robot
@@ -191,9 +194,9 @@ fn get_object_closest_to_center(properties: &Properties) -> String {
 fn get_sift_keypoint_closest_to_center(properties: &Properties) -> String {
     const CAM_GRAB_POS: Vector2<f64> = Vector2::new(145.0, 173.0);
 
-    properties.sift_keypoints.iter()
-        .filter(|sift| sift.detected)
-        .sorted_by_key(|sift| ((sift.point - CAM_GRAB_POS).norm() * 100.0) as i32)
+    properties.sift_clusters.iter()
+        .filter(|sift| sift.active)
+        .sorted_by_key(|sift| ((sift.center - CAM_GRAB_POS).norm() * 100.0) as i32)
         .map(|sift| sift.name.clone())
         .next()
         .unwrap()

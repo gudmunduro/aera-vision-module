@@ -7,7 +7,7 @@ use protobuf::{
     tcp_message, variable_description, CommandDescription, ProtoVariable, TcpMessage,
     VariableDescription,
 };
-use crate::properties::AeraSiftKeyPoint;
+use crate::properties::{AeraSiftCluster, AeraSiftKeyPoint};
 
 pub mod protobuf {
     include!(concat!(env!("OUT_DIR"), "/tcp_io_device.rs"));
@@ -172,7 +172,7 @@ impl AeraConn {
             message: Some(tcp_message::Message::DataMessage(protobuf::DataMessage {
                 variables: [
                     // self.camera_objects(&properties.cam_objs),
-                    self.sift_keypoints(&properties.sift_keypoints),
+                    self.sift_keypoints(&properties.sift_clusters),
                     self.hand_object_properties("h", &properties.h),
                     command.map(|c| vec![self.command_proprty(c)]).unwrap_or_else(Vec::new)
                 ].into_iter().flatten().collect(),
@@ -261,35 +261,35 @@ impl AeraConn {
         ]
     }
 
-    fn sift_keypoints(&self, keypoints: &Vec<AeraSiftKeyPoint>) -> Vec<ProtoVariable> {
+    fn sift_keypoints(&self, keypoints: &Vec<AeraSiftCluster>) -> Vec<ProtoVariable> {
         keypoints
             .iter()
-            .filter(|kp| kp.detected)
-            .flat_map(|kp| self.sift_keypoint_properties(kp))
+            .filter(|c| c.active)
+            .flat_map(|c| self.sift_cluster_properties(c))
             .collect()
     }
 
-    fn sift_keypoint_properties(&self, keypoint: &AeraSiftKeyPoint) -> Vec<ProtoVariable> {
+    fn sift_cluster_properties(&self, cluster: &AeraSiftCluster) -> Vec<ProtoVariable> {
         vec![
             ProtoVariable {
                 meta_data: Some(VariableDescription {
-                    entity_id: self.comm_ids.get(&keypoint.name),
+                    entity_id: self.comm_ids.get(&cluster.name),
                     id: self.comm_ids.get("position"),
                     data_type: variable_description::DataType::Double as i32,
                     dimensions: vec![2],
                     opcode_string_handle: "vec2".to_string(),
                 }),
-                data: keypoint.point.iter().flat_map(|v| [v.to_le_bytes()].as_flattened().to_owned()).collect(),
+                data: cluster.center.iter().flat_map(|v| [v.to_le_bytes()].as_flattened().to_owned()).collect(),
             },
             ProtoVariable {
                 meta_data: Some(VariableDescription {
-                    entity_id: self.comm_ids.get(&keypoint.name),
+                    entity_id: self.comm_ids.get(&cluster.name),
                     id: self.comm_ids.get("features"),
-                    data_type: variable_description::DataType::Double as i32,
-                    dimensions: vec![128],
+                    data_type: variable_description::DataType::Bool as i32,
+                    dimensions: vec![40],
                     opcode_string_handle: "set".to_string(),
                 }),
-                data: keypoint.feature_vec.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                data: cluster.features.iter().take(40).map(|v| *v as u8).collect(),
             },
         ]
     }
