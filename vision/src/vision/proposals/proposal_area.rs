@@ -22,20 +22,33 @@ impl ProposalArea {
         scaled.max.y = (scaled.max.y as f32 * y) as i32;
         scaled
     }
+
+    pub fn contains_point(&self, x: i32, y: i32) -> bool {
+        x >= self.min.x && x <= self.max.x && y >= self.min.y && y <= self.max.y
+    }
+
+    pub fn size(&self) -> i32 {
+        let rect = (self.max - self.min);
+        rect.x * rect.y
+    }
 }
 
 pub struct RecognizedArea {
     pub class: i64,
     pub color: i64,
     pub area: ProposalArea,
+    pub features: Vec<bool>,
+    pub keypoints: Vec<Vector2<i64>>,
 }
 
 impl RecognizedArea {
-    pub fn new(class: i64, color: i64, area: ProposalArea) -> Self {
+    pub fn new(class: i64, color: i64, area: ProposalArea, features: Vec<bool>, keypoints: Vec<Vector2<i64>>) -> Self {
         Self {
             class,
             color,
-            area
+            area,
+            features,
+            keypoints,
         }
     }
 }

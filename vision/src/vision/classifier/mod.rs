@@ -1,9 +1,13 @@
 use std::collections::HashMap;
-
+use std::fs::File;
+use std::io::Write;
 use candle_core::{Device, Tensor};
 use candle_nn::Sequential;
-use nalgebra::DVector;
+use itertools::Itertools;
+use nalgebra::{DVector, SVector};
 use nn::create_nn;
+use crate::SiftKeyPoint;
+use crate::vision::sift::create_feature_vec;
 
 pub mod nn;
 pub mod clip;
@@ -14,6 +18,7 @@ const CLASSIFIER_SIM_THRESHOLD: f32 = 0.65;
 
 pub struct Classifier {
     classes: HashMap<i32, DVector<f32>>,
+    observed_sift_features: Vec<SVector<f64, 128>>,
     model: Sequential,
 }
 
@@ -23,6 +28,7 @@ impl Classifier {
 
         Self {
             classes: HashMap::new(),
+            observed_sift_features: Vec::new(),
             model,
         }
     }
@@ -52,7 +58,7 @@ impl Classifier {
         class
     }
 
-    // Comparisions between classes needs a lot of work
+    // Comparisons between classes needs a lot of work
     fn classify(&self, sample: &DVector<f32>) -> Option<(i32, f32)> {
         let (class, sim) = self.classes.iter()
             .map(|(class, orig_sample)| {
@@ -66,5 +72,27 @@ impl Classifier {
         } else {
             None
         }
+    }
+
+    pub fn get_sift_feature_vector(&mut self, keypoints: &Vec<&SiftKeyPoint>) -> Vec<bool> {
+        let (feature_vec, new_features) = create_feature_vec(keypoints, &self.observed_sift_features);
+        self.observed_sift_features.extend(new_features);
+        feature_vec
+    }
+
+    pub fn write_sift_features(&self) -> anyhow::Result<()> {
+        let sift_json = serde_json::to_string(&self.observed_sift_features)?;
+        let mut output_file = File::create("outputs/sift_map.json")?;
+        output_file.write_all(sift_json.as_bytes())?;
+        drop(output_file);
+
+        Ok(())
+    }
+
+    pub fn read_sift_features(&mut self) -> anyhow::Result<()> {
+        let sift_json = std::fs::read_to_string("outputs/sift_map.json")?;
+        self.observed_sift_features = serde_json::from_str(&sift_json)?;
+
+        Ok(())
     }
 }

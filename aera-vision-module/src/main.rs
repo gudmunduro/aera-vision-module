@@ -1,12 +1,17 @@
-use std::{fmt, process::exit, sync::{Arc, Mutex}, thread::{self, sleep}, time::Duration, u64};
+use std::{fmt, fs, process::exit, sync::{Arc, Mutex}, thread::{self, sleep}, time::Duration, u64};
+use std::fs::File;
+use std::io::Write;
 use itertools::Itertools;
 use aera::{commands::Command, properties::Properties, protobuf::{tcp_message, variable_description, DataMessage, ProtoVariable, VariableDescription}, AeraConn, CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT};
 use nalgebra::{distance, Vector2, Vector4};
-use opencv::imgcodecs::{self, IMREAD_COLOR};
+use opencv::core::{AlgorithmHint, Mat, Scalar};
+use opencv::highgui;
+use opencv::highgui::wait_key;
+use opencv::imgcodecs::{self, imwrite_def, IMREAD_COLOR};
+use opencv::imgproc::{circle, circle_def, cvt_color, cvt_color_def, COLOR_RGB2BGR};
 use pixy2::PixyCamera;
 use robot::{feedback_data::{self, FeedbackData}, RobotConn, RobotFeedbackConn};
 use vision::{RecognizedArea, VisionSystem};
-use sift_processing::SiftProcessing;
 
 fn main() -> anyhow::Result<()> {
     setup_logging();
@@ -34,9 +39,8 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
     let feedback_data = Arc::new(Mutex::new(robot_feedback.receive_feedback()?));
 
     log::info!("Connecting to AERA");
-    let mut sift_processor = SiftProcessing::new();
     let mut properties = Properties::new(CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT);
-    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_clusters.iter().map(|c| c.name.as_str()).collect::<Vec<_>>())?;
+    let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
@@ -58,17 +62,7 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
 
         // Get data from camera
         let frame = pixy.get_frame()?;
-        //let objects = vision.process_frame(&frame)?.into_iter().filter(|o| o.color > 0).collect_vec();
-        let sift_keypoints = vision.process_with_sift(&frame)?;
-        let clusters = sift_processor.get_feature_cluster(&sift_keypoints);
-        println!("Recognized {} SIFT keypoints", sift_keypoints.len());
-
-        properties.sift_clusters.iter_mut().for_each(|kp| kp.active = false);
-        for (i, c) in clusters.into_iter().take(30).enumerate() {
-            properties.sift_clusters[i].active = true;
-            properties.sift_clusters[i].center = c.center.cast();
-            properties.sift_clusters[i].features = c.features;
-        }
+        let objects = vision.process_frame(&frame)?;
 
         // Get data from robot
         let feedback_data = feedback_data.lock().unwrap();
@@ -77,27 +71,36 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
         drop(feedback_data);
 
         // Update based on data from camera
-        //let mut cam_obj_keys = properties.cam_objs.keys().cloned().sorted().collect::<Vec<_>>();
-        /*if let Some(co) = &properties.h.holding {
+        let mut cam_obj_keys = properties.cam_objs.keys().cloned().sorted().collect::<Vec<_>>();
+        if let Some(co_key) = &properties.h.holding {
             // Don't overwrite camera object that is being held
-            cam_obj_keys.retain(|k| k != co);
-        }*/
-        /*cam_obj_keys.iter().for_each(|c| properties.cam_objs.get_mut(c).unwrap().set_default());
-        for (object, co_key) in objects.iter().zip(cam_obj_keys.iter()).take(cam_obj_keys.len()) {
+            cam_obj_keys.retain(|k| k != co_key);
+
+            let cam_obj = properties.cam_objs.get_mut(co_key).unwrap();
+            cam_obj.approximate_pos = properties.h.position.clone();
+        }
+        cam_obj_keys.iter().for_each(|c| properties.cam_objs.get_mut(c).unwrap().set_default());
+        for co_key in &cam_obj_keys {
+            // Have each co as the object of that color
+            let co_color: i64 = (&co_key[2..3]).parse().unwrap();
+            let Some(object) = objects.iter().find(|o| o.color == co_color) else {
+                continue;
+            };
             let area = &object.area;
             let cam_obj = properties.cam_objs.get_mut(co_key).unwrap();
 
             cam_obj.class = 0;
             cam_obj.color = object.color;
             cam_obj.position = (area.min + (area.max - area.min) / 2).cast();
+            cam_obj.approximate_pos = calculate_predicted_grab_pos(&properties.h.position, &cam_obj.position);
+            cam_obj.features = object.features.clone();
             log::debug!("Sending {co_key} pos ({}, {})", cam_obj.position.x, cam_obj.position.y);
-        }*/
-
-
+        }
 
         // Send to AERA
         log::debug!("Sending hand position ({}, {}, {}, {})", properties.h.position.x, properties.h.position.y, properties.h.position.z, properties.h.position.w);
         log::debug!("Hand holding: {:?}", properties.h.holding);
+        save_properties(&properties)?;
         aera.send_properties(&properties, None)?;
 
         // Handle command from AERA
@@ -134,6 +137,8 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
                 log_err(|| -> anyhow::Result<()> {
                     let pos = properties.h.position + Vector4::new(0.0, 0.0, -110.0, 0.0);
                     robot.set_do(3, true)?;
+                    sleep(Duration::from_secs(1));
+                    robot.set_do(1, false)?;
                     sleep(Duration::from_secs(2));
                     robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
                     sleep(Duration::from_secs(1));
@@ -143,7 +148,8 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
                     sleep(Duration::from_secs(3));
                     let orig_pos = &properties.h.position;
                     robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
-                    properties.h.holding = Some(get_sift_keypoint_closest_to_center(&properties));
+                    // TODO: Determine if the center keypoint is still there
+                    properties.h.holding = Some(get_object_closest_to_center(&properties));
 
                     Ok(())
                 });
@@ -151,9 +157,24 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
             Command::Release => {
                 log::info!("Got release command from AERA");
                 log_err(|| -> anyhow::Result<()> {
+                    let close_objects = properties.cam_objs
+                        .iter()
+                        .filter(|(_, o)| (o.approximate_pos - properties.h.position).norm() < 40.0)
+                        .count();
+                    log::debug!("{close_objects} are close to the hand");
+                    let down_distance = -100.0;
+                    // TODO: Temp change for scenario 2 (stacking)
+                    let down_distance = -80.0;
+
+                    let pos = properties.h.position + Vector4::new(0.0, 0.0, down_distance, 0.0);
+                    let orig_pos = &properties.h.position;
+                    robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
+                    sleep(Duration::from_secs(1));
                     robot.set_do(1, false)?;
                     sleep(Duration::from_secs(1));
                     robot.set_do(3, true)?;
+                    sleep(Duration::from_secs(1));
+                    robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
                     properties.h.holding = None;
 
                     Ok(())
@@ -161,6 +182,26 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
             },
             Command::NoAction => {
                 log::info!("Got no action command from AERA");
+            },
+            Command::Push => {
+                log_err(|| -> anyhow::Result<()> {
+                    let pos = properties.h.position + Vector4::new(-40.0, 0.0, -100.0, 0.0);
+                    let orig_pos = &properties.h.position;
+
+                    robot.set_do(3, false)?;
+                    sleep(Duration::from_secs(1));
+                    robot.set_do(1, true)?;
+                    sleep(Duration::from_secs(1));
+                    robot.mov_j(pos.x, pos.y, pos.z+100.0, pos.w)?;
+                    sleep(Duration::from_secs(1));
+                    robot.mov_j(pos.x, pos.y, pos.z, pos.w)?;
+                    sleep(Duration::from_secs(1));
+                    robot.mov_j(pos.x + 50.0, pos.y, pos.z, pos.w)?;
+                    sleep(Duration::from_secs(1));
+                    robot.mov_j(orig_pos.x, orig_pos.y, orig_pos.z, orig_pos.w)?;
+
+                    Ok(())
+                });
             }
         }
 
@@ -171,11 +212,11 @@ fn run_main_loop(robot: &mut RobotConn) -> anyhow::Result<()> {
 }
 
 fn calculate_predicted_grab_pos(hand_pos: &Vector4<f64>, co_pos: &Vector2<f64>) -> Vector4<f64> {
-    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(162.0, 191.0);
+    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(145.0, 160.0);
     let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y);
     let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) / 1.175);
-    let pred_z = -140_f64;
-    let pred_w = 45_f64;
+    let pred_z = -100_f64;
+    let pred_w = 180_f64;
 
     Vector4::new(pred_x, pred_y, pred_z, pred_w)
 }
@@ -191,15 +232,14 @@ fn get_object_closest_to_center(properties: &Properties) -> String {
         .unwrap()
 }
 
-fn get_sift_keypoint_closest_to_center(properties: &Properties) -> String {
-    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(145.0, 173.0);
+fn get_sift_keypoint_closest_to_center(properties: &Properties) -> Option<String> {
+    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(139.0, 172.0);
 
     properties.sift_clusters.iter()
         .filter(|sift| sift.active)
         .sorted_by_key(|sift| ((sift.center - CAM_GRAB_POS).norm() * 100.0) as i32)
         .map(|sift| sift.name.clone())
         .next()
-        .unwrap()
 }
 
 fn log_err<T, E: fmt::Display>(f: impl FnOnce() -> Result<T, E>) {
@@ -239,4 +279,44 @@ fn ask_to_continue() {
             break;
         }
     }
+}
+
+/*fn visualize_sift_clusters(img_rgb: &Mat, sift_clusters: &Vec<SiftClusterResult>) -> anyhow::Result<()> {
+    highgui::named_window("Display window", highgui::WINDOW_NORMAL)?;
+    highgui::resize_window("Display window", 1280, 720)?;
+    let mut dbg_canvas = Mat::default();
+    cvt_color(&img_rgb, &mut dbg_canvas, COLOR_RGB2BGR, 0, AlgorithmHint::ALGO_HINT_DEFAULT)?;
+
+    for cluster in sift_clusters {
+        circle_def(&mut dbg_canvas, opencv::core::Point::new(cluster.center.x as i32, cluster.center.y as i32), 8, Scalar::new(0.0, 0.0, 255.0, 255.0))?;
+    }
+
+    highgui::imshow("Display window", &dbg_canvas)?;
+    wait_key(0)?;
+
+    static FRAME: Mutex<i32> = Mutex::new(0);
+    *FRAME.lock().unwrap() += 1;
+    //imwrite_def(&format!("outputs/{}_cluster.jpg", *FRAME.lock().unwrap()), &dbg_canvas)?;
+
+    Ok(())
+}*/
+
+fn capture_image() -> anyhow::Result<()> {
+    let pixy = PixyCamera::init()?;
+    let frame_rgb = pixy.get_frame()?;
+    let mut frame = Mat::default();
+    cvt_color_def(&frame_rgb, &mut frame, COLOR_RGB2BGR)?;
+    imwrite_def("outputs/extra_11_side_view.jpg", &frame)?;
+
+    Ok(())
+}
+
+fn save_properties(properties: &Properties) -> anyhow::Result<()> {
+    static FRAME: Mutex<i32> = Mutex::new(0);
+    *FRAME.lock().unwrap() += 1;
+    let properties_json = serde_json::to_string(&properties)?;
+    let mut output_file = File::create(format!("outputs/{}_properties.json", *FRAME.lock().unwrap()))?;
+    output_file.write_all(properties_json.as_bytes())?;
+
+    Ok(())
 }

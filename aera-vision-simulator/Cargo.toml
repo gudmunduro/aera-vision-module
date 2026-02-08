@@ -10,3 +10,7 @@ nalgebra = "0.33.1"
 log = "0.4.22"
 simple-log = "2.1.1"
 rand = "0.8.5"
+vision = { path = "../vision" }
+serde_json = "1.0.140"
+opencv = { version = "0.93.3", features = ["clang-runtime"]}
+itertools = "0.13.0"

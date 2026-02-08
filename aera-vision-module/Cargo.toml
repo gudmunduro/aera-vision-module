@@ -9,9 +9,9 @@ vision = { path = "../vision" }
 pixy2 = { path = "../pixy2" }
 aera = { path = "../aera" }
 robot = { path = "../robot" }
-sift-processing = { path = "../sift-processing" }
 anyhow = "1.0.90"
 nalgebra = "0.33.1"
 log = "0.4.22"
 simple-log = "2.1.1"
 itertools = "0.13.0"
+serde_json = "1.0.140"

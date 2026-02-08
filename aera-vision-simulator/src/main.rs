@@ -1,9 +1,10 @@
-use std::{collections::VecDeque, thread::sleep, time::Duration};
-
+use std::{collections::VecDeque, fs, thread::sleep, time::Duration};
+use itertools::Itertools;
 use aera::{commands::Command, properties::Properties, AeraConn, CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT};
 use nalgebra::{Vector2, Vector4};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use simulated_cube::SimCube;
+use vision::{SiftKeyPoint, VisionSystem};
 
 pub mod simulated_cube;
 
@@ -12,22 +13,24 @@ fn main() -> anyhow::Result<()> {
 
     log::info!("Connecting to AERA");
     let mut properties = Properties::new(CAM_OBJ_COUNT, MAX_SIFT_POINT_COUNT);
-    let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_keypoints.iter().map(|kp| kp.name.as_str()).collect::<Vec<_>>())?;
-    //let mut aera = AeraConn::connect("127.0.0.1", &properties.cam_objs.keys().map(|k| k.as_str()).collect::<Vec<_>>())?;
+    //let mut aera = AeraConn::connect("192.168.1.44", &properties.sift_clusters.iter().map(|kp| kp.name.as_str()).collect::<Vec<_>>())?;
+    let mut aera = AeraConn::connect("192.168.1.44", &properties.cam_objs.keys().map(|k| k.as_str()).collect::<Vec<_>>())?;
     log::debug!("Wating for start message");
     aera.wait_for_start_message()?;
 
+    let mut vision_system = VisionSystem::new();
     let mut sim_cube = SimCube::initial();
     set_initial_state(&mut properties, &mut sim_cube);
-    set_demo_sift_points(&mut properties);
 
-    let mut forced_commands = VecDeque::from([]);
+    //let mut forced_commands = VecDeque::from([]);
+    let mut frame = 0;
 
     log::info!("Starting main loop");
     loop {
         sleep(Duration::from_millis(500));
 
-        let cmd_to_send = forced_commands.pop_front();
+        let cmd_to_send: Option<Command> = None;
+        /*let cmd_to_send = forced_commands.pop_front();
         if sim_cube.visible {
             let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
             co1.position = sim_cube.pos;
@@ -48,19 +51,39 @@ fn main() -> anyhow::Result<()> {
                 co1.class = -1;
                 co1.color = -1;
             }
-        }
+        }*/
 
-        {
-            let mut co1 = properties.cam_objs.get_mut("co1").unwrap();
+        frame += 1;
 
-            log::debug!("Holding {}", properties.h.holding.clone().unwrap_or("Nothing".to_owned()));
-            let hp = properties.h.position;
-            log::debug!("Hand position ({}, {}, {}, {})", hp.x, hp.y, hp.z, hp.w);
-            let ap = co1.approximate_pos;
-            log::debug!("Cam obj (co1) pos: ({}, {}, {}, {})", ap.x, ap.y, ap.z, ap.w);
-            let cp = co1.position;
-            log::debug!("Cam obj (co1) cam pos: ({}, {})", cp.x, cp.y);
+        // Update based on data from camera
+        /*let objects = vision_system.process_frame(&vision_system.read_frame(&format!("./outputs/{frame}_frame.jpg")).unwrap())?;
+        let mut cam_obj_keys = properties.cam_objs.keys().cloned().sorted().collect::<Vec<_>>();
+        if let Some(co) = &properties.h.holding {
+            // Don't overwrite camera object that is being held
+            cam_obj_keys.retain(|k| k != co);
         }
+        cam_obj_keys.iter().for_each(|c| properties.cam_objs.get_mut(c).unwrap().set_default());
+        for (object, co_key) in objects.iter().zip(cam_obj_keys.iter()).take(cam_obj_keys.len()) {
+            let area = &object.area;
+            let cam_obj = properties.cam_objs.get_mut(co_key).unwrap();
+
+            cam_obj.class = 0;
+            cam_obj.color = object.color;
+            cam_obj.position = (area.min + (area.max - area.min) / 2).cast();
+            cam_obj.approximate_pos = calculate_predicted_grab_pos(&properties.h.position, &cam_obj.position);
+            cam_obj.features = object.features.clone();
+            log::debug!("Sending {co_key} pos ({}, {})", cam_obj.position.x, cam_obj.position.y);
+        }*/
+
+        /*properties.sift_clusters.iter_mut().for_each(|kp| kp.active = false);
+        for (i, c) in clusters.into_iter().take(30).enumerate() {
+            properties.sift_clusters[i].active = true;
+            properties.sift_clusters[i].center = c.center.cast();
+            properties.sift_clusters[i].approximate_pos = calculate_predicted_grab_pos(&properties.h.position, &c.center.cast());
+            properties.sift_clusters[i].features = c.features;
+            properties.sift_clusters[i].obj_type = c.class_id;
+        }*/
+        properties = serde_json::from_str(&fs::read_to_string(&format!("outputs/scenario_2_with_sift_v2_success/{frame}_properties.json"))?)?;
 
         log::debug!("Sending properties");
         aera.send_properties(&properties, cmd_to_send.as_ref())?;
@@ -102,8 +125,11 @@ fn main() -> anyhow::Result<()> {
             }
             Command::Grab => {
                 log::info!("Got grab command from AERA");
-                properties.h.holding = Some("sift1".to_string());
+                properties.h.holding = Some("co1".to_string());
                 sim_cube.visible = false;
+            }
+            Command::Push => {
+
             }
             Command::Release => {
                 log::info!("Got release command from AERA");
@@ -113,7 +139,7 @@ fn main() -> anyhow::Result<()> {
             }
             Command::NoAction => {
                 log::info!("Got no action command from AERA");
-                sleep(Duration::from_secs(10));
+                sleep(Duration::from_secs(30));
             }
         }
 
@@ -132,18 +158,10 @@ fn set_initial_state(properties: &mut Properties, sim_cube: &mut SimCube) {
     sim_cube.move_hand(&Vector4::new(0.0, 0.0, 0.0, 0.0), &properties.h.position);
 }
 
-fn set_demo_sift_points(properties: &mut Properties) {
-    properties.sift_keypoints[0].detected = true;
-    properties.sift_keypoints[0].point = Vector2::new(200.88758850097656, 268.90301513671875);
-    properties.sift_keypoints[0].feature_vec = vec![38.00, 26.00, 3.00, 1.00, 0.00, 0.00, 2.00, 6.00, 10.00, 2.00, 1.00, 1.00, 1.00, 4.00, 42.00, 32.00, 0.00, 0.00, 1.00, 7.00, 20.00, 74.00, 46.00, 6.00, 14.00, 4.00, 4.00, 6.00, 10.00, 50.00, 11.00, 3.00, 67.00, 4.00, 0.00, 0.00, 0.00, 2.00, 19.00, 30.00, 129.00, 19.00, 2.00, 2.00, 3.00, 18.00, 93.00, 129.00, 14.00, 6.00, 3.00, 17.00, 113.00, 129.00, 129.00, 45.00, 1.00, 0.00, 0.00, 5.00, 73.00, 93.00, 4.00, 0.00, 41.00, 14.00, 0.00, 1.00, 2.00, 4.00, 9.00, 5.00, 129.00, 129.00, 80.00, 15.00, 4.00, 5.00, 5.00, 29.00, 17.00, 50.00, 129.00, 129.00, 129.00, 39.00, 8.00, 9.00, 0.00, 0.00, 2.00, 92.00, 91.00, 9.00, 0.00, 0.00, 5.00, 11.00, 13.00, 5.00, 1.00, 0.00, 0.00, 0.00, 6.00, 51.00, 51.00, 11.00, 1.00, 0.00, 0.00, 0.00, 0.00, 8.00, 72.00, 83.00, 5.00, 2.00, 1.00, 0.00, 0.00, 0.00, 4.00, 49.00, 27.00, 9.00, 1.00, 0.00];
-
-    properties.sift_keypoints[1].detected = true;
-    properties.sift_keypoints[1].point = Vector2::new(327.4416809082031, 148.53501892089844);
-    properties.sift_keypoints[1].feature_vec = vec![109.00, 75.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2.00, 51.00, 30.00, 1.00, 0.00, 6.00, 20.00, 15.00, 22.00, 0.00, 0.00, 1.00, 4.00, 26.00, 81.00, 29.00, 3.00, 1.00, 4.00, 11.00, 7.00, 5.00, 10.00, 41.00, 11.00, 120.00, 33.00, 0.00, 0.00, 0.00, 0.00, 0.00, 41.00, 120.00, 41.00, 10.00, 5.00, 7.00, 26.00, 39.00, 106.00, 7.00, 7.00, 11.00, 49.00, 120.00, 117.00, 35.00, 16.00, 3.00, 19.00, 23.00, 31.00, 49.00, 4.00, 0.00, 0.00, 65.00, 5.00, 0.00, 0.00, 0.00, 18.00, 105.00, 120.00, 79.00, 104.00, 81.00, 25.00, 7.00, 36.00, 18.00, 20.00, 3.00, 19.00, 80.00, 120.00, 99.00, 18.00, 6.00, 1.00, 9.00, 5.00, 2.00, 29.00, 32.00, 3.00, 10.00, 14.00, 0.00, 0.00, 2.00, 33.00, 56.00, 120.00, 120.00, 21.00, 0.00, 2.00, 30.00, 53.00, 43.00, 106.00, 15.00, 0.00, 0.00, 5.00, 22.00, 21.00, 12.00, 44.00, 29.00, 0.00, 0.00, 1.00, 1.00, 1.00, 2.00, 15.00, 38.00, 8.00];
-
-    for i in 2..properties.sift_keypoints.len() {
-        properties.sift_keypoints[i].detected = false;
-    }
+fn load_sift_frame(frame: i32) -> Option<Vec<SiftKeyPoint>> {
+    log::debug!("Start of frame {frame}");
+    let content = fs::read_to_string(&format!("outputs/{frame}_sift.json")).ok()?;
+    serde_json::from_str(&content).unwrap()
 }
 
 fn setup_logging() {
@@ -162,4 +180,14 @@ fn gen_random_command(rng: &mut ThreadRng) -> Command {
 fn random_noise() -> f64 {
     let mut rng = thread_rng();
     rng.gen_range(0.0..0.2)
+}
+
+fn calculate_predicted_grab_pos(hand_pos: &Vector4<f64>, co_pos: &Vector2<f64>) -> Vector4<f64> {
+    const CAM_GRAB_POS: Vector2<f64> = Vector2::new(230.0, 194.0);
+    let pred_x = hand_pos.x + (CAM_GRAB_POS.y - co_pos.y);
+    let pred_y = hand_pos.y + ((CAM_GRAB_POS.x - co_pos.x) / 1.175);
+    let pred_z = -140_f64;
+    let pred_w = 180_f64;
+
+    Vector4::new(pred_x, pred_y, pred_z, pred_w)
 }

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use log::Level::Debug;
 use nalgebra::{Vector2, Vector4};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Properties {
     pub cam_objs: HashMap<String, CameraObject>,
     pub sift_clusters: Vec<AeraSiftCluster>,
@@ -12,19 +14,20 @@ impl Properties {
     pub fn new(cam_obj_count: usize, sift_keypoint_count: usize) -> Properties {
         Properties {
             cam_objs: (1..cam_obj_count+1).map(|i| (format!("co{i}"), CameraObject::new())).collect(),
-            sift_clusters: (1..sift_keypoint_count+1).map(|i| AeraSiftCluster::new(format!("co{i}"))).collect(),
+            sift_clusters: (1..sift_keypoint_count+1).map(|i| AeraSiftCluster::new(format!("sift{i}"))).collect(),
             h: HandObject::new(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CameraObject {
     pub position: Vector2<f64>,
     pub approximate_pos: Vector4<f64>,
     pub class: i64,
     pub color: i64,
-    pub size: i64
+    pub size: i64,
+    pub features: Vec<bool>,
 }
 
 impl CameraObject {
@@ -34,7 +37,8 @@ impl CameraObject {
             approximate_pos: Vector4::new(-1.0, -1.0, -1.0, -1.0),
             class: -1,
             color: -1,
-            size: -1
+            size: -1,
+            features: vec![],
         }
     }
 
@@ -46,7 +50,7 @@ impl CameraObject {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandObject {
     pub position: Vector4<f64>,
     pub holding: Option<String>
@@ -80,12 +84,14 @@ impl AeraSiftKeyPoint {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AeraSiftCluster {
     pub name: String,
     pub active: bool,
     pub center: Vector2<f64>,
+    pub approximate_pos: Vector4<f64>,
     pub features: Vec<bool>,
+    pub obj_type: u32,
 }
 
 impl AeraSiftCluster {
@@ -94,7 +100,9 @@ impl AeraSiftCluster {
             name,
             active: false,
             center: Default::default(),
+            approximate_pos: Default::default(),
             features: vec![],
+            obj_type: u32::MAX,
         }
     }
 }

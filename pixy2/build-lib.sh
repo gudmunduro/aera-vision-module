@@ -1,1 +1,1 @@
-g++ -I/usr/include/libusb-1.0 -Ipixy2/src/host/libpixyusb2/include -Ipixy2/src/host/arduino/libraries/Pixy2 src/bridge.cpp pixy2/build/libpixyusb2/libpixy2.a -r -o src/bridge.o
+g++ -I/opt/homebrew/include/libusb-1.0/ -I/opt/homebrew/include/ -Ipixy2/src/host/libpixyusb2/include -Ipixy2/src/host/arduino/libraries/Pixy2 src/bridge.cpp pixy2/build/libpixyusb2/libpixy2.a -lusb-1.0 -r -o src/bridge.o

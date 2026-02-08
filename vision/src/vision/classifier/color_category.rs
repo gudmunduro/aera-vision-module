@@ -5,6 +5,15 @@ use opencv::imgproc::{cvt_color, gaussian_blur_def, COLOR_BGR2HSV, COLOR_RGB2HSV
 use crate::vision::proposals::proposal_area::ProposalArea;
 
 pub fn get_color_of_proposal(img: &Mat, proposal: &ProposalArea) -> anyhow::Result<i32> {
+    if proposal.min.x < 0 || proposal.min.y < 0 {
+        return Ok(0);
+    }
+    let width = proposal.max.x - proposal.min.x;
+    let height = proposal.max.y - proposal.min.y;
+    if proposal.min.x + width > img.cols() || proposal.min.y + height > img.rows() {
+        return Ok(0);
+    }
+
     let proposal_img_rgb = img.roi(Rect {
         x: proposal.min.x,
         y: proposal.min.y,
@@ -55,7 +64,7 @@ pub fn get_color_of_proposal(img: &Mat, proposal: &ProposalArea) -> anyhow::Resu
     in_range(
         &proposal_img,
         &[40, 35, 13],
-        &[79, 255, 255],
+        &[93, 255, 255],
         &mut masked,
     )?;
     let green_ratio = count_non_zero(&masked)? as f32 / proposal_img.total() as f32;
@@ -68,12 +77,12 @@ pub fn get_color_of_proposal(img: &Mat, proposal: &ProposalArea) -> anyhow::Resu
         log::debug!("Saw red object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         2
     }
-    else if yellow_ratio > 0.4 {
-        log::debug!("Saw yellow object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
+    else if green_ratio > 0.3 {
+        log::debug!("Saw green object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         3
     }
-    else if green_ratio > 0.4 {
-        log::debug!("Saw green object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
+    else if yellow_ratio > 0.4 {
+        log::debug!("Saw yellow object {red_ratio} at ({}, {}) - ({}, {})", proposal.min.x, proposal.min.y, proposal.max.x, proposal.max.y);
         4
     }
     else {
